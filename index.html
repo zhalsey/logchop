@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Chop - Lumberjack Tycoon Game</title>
+<meta name="description" content="Chop logs, sell firewood, upgrade your gear. A lumberjack tycoon idle game. Grab your axe and start splitting!">
+<meta name="keywords" content="log chop, lumberjack game, idle game, tycoon, firewood, chopping game, browser game">
+<meta name="author" content="Log Chop">
+<meta name="theme-color" content="#1a1a2e">
+
+<!-- Open Graph -->
+<meta property="og:title" content="Log Chop - Lumberjack Tycoon Game">
+<meta property="og:description" content="Chop logs, sell firewood, upgrade your gear. A lumberjack tycoon idle game.">
+<meta property="og:image" content="og-image.png">
+<meta property="og:type" content="website">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Log Chop - Lumberjack Tycoon Game">
+<meta name="twitter:description" content="Chop logs, sell firewood, upgrade your gear. A lumberjack tycoon idle game.">
+<meta name="twitter:image" content="og-image.png">
+
+<!-- Favicons -->
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512x512.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; font-family: 'Press Start 2P', monospace; overflow: hidden; user-select: none;
+  }
+  #header { color: #c8a96e; font-size: 24px; margin-bottom: 4px; text-shadow: 3px 3px 0 #4a3520; letter-spacing: 3px; }
+  #hud { display: flex; gap: 16px; margin-bottom: 5px; color: #e8d5b0; font-size: 9px; flex-wrap: wrap; justify-content: center; }
+  #hud span { text-shadow: 1px 1px 0 #333; }
+  .hud-coins { color: #ffd700 !important; }
+  .hud-axe { color: #a0c8ff !important; }
+  .hud-legs { color: #80e080 !important; }
+  .hud-arms { color: #ff9966 !important; }
+  canvas { border: 3px solid #4a3520; border-radius: 4px; cursor: crosshair; image-rendering: pixelated; max-width: 100%; }
+  #instructions { color: #888; font-size: 8px; margin-top: 6px; text-align: center; line-height: 2; padding: 0 10px; }
+  #instructions strong { color: #c8a96e; }
+  #footer { color: #444; font-size: 7px; margin-top: 12px; text-align: center; letter-spacing: 1px; }
+  #footer a { color: #666; text-decoration: none; }
+  #footer a:hover { color: #c8a96e; }
+</style>
+</head>
+<body>
+<div id="header">LOG CHOP</div>
+<div id="hud">
+  <span>LOGS: <span id="score">0</span></span>
+  <span>WOOD: <span id="firewood">0</span></span>
+  <span class="hud-coins">COINS: <span id="coins">0</span></span>
+  <span class="hud-axe">AXE: <span id="axelevel">Starter</span></span>
+  <span class="hud-legs">HUSTLE: <span id="coffeelevel">Normal</span></span>
+  <span class="hud-arms">POWER: <span id="jerkylevel">Normal</span></span>
+</div>
+<canvas id="game" width="900" height="520"></canvas>
+<div id="instructions">
+  <strong>CLICK</strong> walk &nbsp;|&nbsp; <strong>SPACE</strong> chop &nbsp;|&nbsp; <strong>M</strong> sell &nbsp;|&nbsp; <strong>U</strong> axe upgrade &nbsp;|&nbsp; <strong>C</strong> coffee &nbsp;|&nbsp; <strong>J</strong> jerky
+</div>
+<div id="footer">&copy; 2026 Log Chop</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const firewoodEl = document.getElementById('firewood');
+const coinsEl = document.getElementById('coins');
+const axeLevelEl = document.getElementById('axelevel');
+const coffeeLevelEl = document.getElementById('coffeelevel');
+const jerkyLevelEl = document.getElementById('jerkylevel');
+
+let logsChopped = 0, firewoodCount = 0, coins = 0, gameTime = 0;
+
+// ─── AXE UPGRADES ───
+const axes = [
+  { name: 'Starter', color: '#a0a0a8', shine: '#d0d0d8', chopsMulti: 1, cost: 0 },
+  { name: 'Steel', color: '#b0b8c0', shine: '#e0e8f0', chopsMulti: 0.8, cost: 30 },
+  { name: 'Hardened', color: '#7ec8e3', shine: '#b0e8ff', chopsMulti: 0.65, cost: 90 },
+  { name: 'Mythril', color: '#90e090', shine: '#c0ffc0', chopsMulti: 0.5, cost: 250 },
+  { name: 'Golden', color: '#ffd700', shine: '#fff4a0', chopsMulti: 0.35, cost: 600 },
+];
+let axeLevel = 0;
+
+// ─── COFFEE (walk speed) ───
+const coffees = [
+  { name: 'Normal', speed: 1.8, cost: 0 },
+  { name: 'Coffee', speed: 2.6, cost: 12 },
+  { name: 'Dbl Shot', speed: 3.4, cost: 35 },
+  { name: 'Triple', speed: 4.2, cost: 80 },
+  { name: 'Espresso IV', speed: 5.2, cost: 200 },
+];
+let coffeeLevel = 0;
+
+// ─── JERKY (chop speed) ───
+const jerkys = [
+  { name: 'Normal', chopSpeed: 0.020, cost: 0 },
+  { name: 'Jerky', chopSpeed: 0.026, cost: 15 },
+  { name: 'Dbl Jerky', chopSpeed: 0.033, cost: 45 },
+  { name: 'Smoked', chopSpeed: 0.042, cost: 100 },
+  { name: 'Brisket', chopSpeed: 0.055, cost: 250 },
+];
+let jerkyLevel = 0;
+
+const MARKET_MIN_WOOD = 15;
+const WOOD_PRICE = 2;
+let marketMessage = null;
+
+// ─── CUTSCENE ───
+let cutscene = null;
+function startCutscene(type, data) { cutscene = { type, phase: 0, timer: 0, data: data || {} }; }
+function isBusy() { return cutscene !== null || jack.isChopping; }
+
+// ─── LUMBERJACK ───
+const jack = {
+  x: 300, y: 360, targetX: 300, facing: 1, walkTimer: 0,
+  isWalking: false, isChopping: false, chopPhase: 0,
+  carrying: false, carryCount: 0,
+  hasAxe: true, jitter: 0, jitterTimer: 0,
+  drinking: false, eating: false
+};
+
+function getJackSpeed() { return coffees[coffeeLevel].speed; }
+function getChopSpeed() { return jerkys[jerkyLevel].chopSpeed; }
+
+// ─── LOGS ───
+let logs = [], splitAnimations = [], particles = [], floatingMessages = [];
+let blacksmithSparks = [];
+const blockPositions = [250, 400, 550, 700];
+
+function getMaxChops() {
+  const base = 4 + Math.floor(Math.random() * 3);
+  return Math.max(1, Math.round(base * axes[axeLevel].chopsMulti));
+}
+
+function spawnLog() {
+  const available = blockPositions.filter(px => !logs.some(l => !l.chopped && Math.abs(l.x - px) < 60));
+  if (available.length === 0) return;
+  const x = available[Math.floor(Math.random() * available.length)];
+  const types = ['oak','pine','birch'];
+  const type = types[Math.floor(Math.random()*types.length)];
+  const colors = { oak:'#8B6914', pine:'#a0522d', birch:'#d4c5a9' };
+  const ringColors = { oak:'#6b4f10', pine:'#7a3e22', birch:'#b8a88a' };
+  logs.push({
+    x, y:390, type, color:colors[type], ringColor:ringColors[type],
+    diameter: 30+Math.random()*20, chopped:false, chopProgress:0, maxChops:getMaxChops()
+  });
+}
+for (let i = 0; i < 3; i++) spawnLog();
+
+// ─── DRAWING ───
+function drawSky() {
+  const g=ctx.createLinearGradient(0,0,0,300); g.addColorStop(0,'#5b8fb9'); g.addColorStop(1,'#87ceeb');
+  ctx.fillStyle=g; ctx.fillRect(0,0,900,300);
+  ctx.fillStyle='#fff4a0'; ctx.beginPath(); ctx.arc(800,60,25,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ffd700'; ctx.beginPath(); ctx.arc(800,60,20,0,Math.PI*2); ctx.fill();
+}
+
+function drawClouds(t) {
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  [[100,60,60],[350,40,45],[600,70,55],[800,50,40]].forEach(([bx,by,sz])=>{
+    const cx=(bx+t*0.01)%960-30;
+    ctx.beginPath(); ctx.arc(cx,by,sz*0.6,0,Math.PI*2); ctx.arc(cx+sz*0.4,by-sz*0.2,sz*0.5,0,Math.PI*2); ctx.arc(cx+sz*0.8,by,sz*0.4,0,Math.PI*2); ctx.fill();
+  });
+}
+
+function drawMountains() {
+  ctx.fillStyle='#3a6b35'; ctx.beginPath(); ctx.moveTo(-20,280);
+  ctx.lineTo(120,140);ctx.lineTo(250,260);ctx.lineTo(350,130);ctx.lineTo(500,270);ctx.lineTo(620,150);ctx.lineTo(750,250);ctx.lineTo(850,160);ctx.lineTo(940,270);ctx.lineTo(940,280); ctx.fill();
+  ctx.fillStyle='#2d5a27'; ctx.beginPath(); ctx.moveTo(-20,290);
+  ctx.lineTo(80,200);ctx.lineTo(200,280);ctx.lineTo(400,190);ctx.lineTo(550,280);ctx.lineTo(700,200);ctx.lineTo(830,275);ctx.lineTo(940,230);ctx.lineTo(940,290); ctx.fill();
+}
+
+function drawGround() {
+  const g=ctx.createLinearGradient(0,290,0,520);
+  g.addColorStop(0,'#5a8f3c');g.addColorStop(0.15,'#4a7a3b');g.addColorStop(1,'#3d6630');
+  ctx.fillStyle=g; ctx.fillRect(0,290,900,230);
+  ctx.fillStyle='#6b5030'; ctx.beginPath(); ctx.ellipse(470,410,300,35,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#7a5c38'; ctx.beginPath(); ctx.ellipse(470,408,290,30,0,0,Math.PI*2); ctx.fill();
+}
+
+function drawBackgroundTrees() {
+  [[30,260,0.7],[80,250,0.9],[780,255,0.85],[850,245,1],[870,265,0.65]].forEach(([tx,ty,s])=>{
+    ctx.fillStyle='#4a2e14'; ctx.fillRect(tx-4*s,ty,8*s,40*s);
+    ctx.fillStyle='#1e4a14';
+    ctx.beginPath(); ctx.moveTo(tx,ty-40*s); ctx.lineTo(tx-25*s,ty+10); ctx.lineTo(tx+25*s,ty+10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(tx,ty-25*s); ctx.lineTo(tx-20*s,ty+20); ctx.lineTo(tx+20*s,ty+20); ctx.fill();
+  });
+}
+
+function drawChoppingBlock(x,y) {
+  ctx.fillStyle='#8B7355'; ctx.fillRect(x-18,y-20,36,22);
+  ctx.fillStyle='#a08060'; ctx.beginPath(); ctx.ellipse(x,y-20,18,7,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#6b5535'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.ellipse(x,y-20,12,4.5,0,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(x,y-20,6,2.5,0,0,Math.PI*2); ctx.stroke();
+}
+
+function drawLog(log) {
+  if(log.chopped) return;
+  const x=log.x, y=log.y, r=log.diameter/2;
+  ctx.fillStyle=log.color; ctx.fillRect(x-r,y-28-r*1.2,r*2,r*1.2);
+  ctx.fillStyle=log.ringColor; ctx.beginPath(); ctx.ellipse(x,y-28-r*1.2,r,r*0.45,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=log.color; ctx.lineWidth=1;
+  for(let i=1;i<=3;i++){ctx.beginPath();ctx.ellipse(x,y-28-r*1.2,r*(i/4),r*0.45*(i/4),0,0,Math.PI*2);ctx.stroke();}
+  ctx.strokeStyle='#3a2510'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(x,y-28-r*1.2,r,r*0.45,0,0,Math.PI*2); ctx.stroke();
+  if(log.chopProgress>0){
+    ctx.strokeStyle='#ffe0a0'; ctx.lineWidth=2;
+    for(let i=0;i<log.chopProgress;i++){const cx=x-(log.chopProgress*2)+i*4; ctx.beginPath(); ctx.moveTo(cx,y-28-r*1.8); ctx.lineTo(cx,y-28-r*0.6); ctx.stroke();}
+  }
+  // Progress bar
+  const barW=r*2, barH=4, barX=x-r, barY=y-28-r*1.2-r*0.45-14;
+  ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(barX,barY,barW,barH);
+  const pct=log.chopProgress/log.maxChops;
+  ctx.fillStyle=pct>0.7?'#ff6644':pct>0.4?'#ffaa44':'#88cc44';
+  ctx.fillRect(barX,barY,barW*pct,barH);
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1; ctx.strokeRect(barX,barY,barW,barH);
+  ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText((log.maxChops-log.chopProgress)+'',x,barY-3);
+}
+
+// ─── MARKET STALL ───
+function drawMarketStall() {
+  const mx=55, my=345;
+  ctx.fillStyle='#8B6914'; ctx.fillRect(mx-28,my-8,56,40);
+  ctx.fillStyle='#cc3333'; ctx.beginPath();
+  ctx.moveTo(mx-36,my-8);ctx.lineTo(mx+36,my-8);ctx.lineTo(mx+32,my-22);ctx.lineTo(mx-32,my-22);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#fff';
+  for(let s=-24;s<28;s+=12){ctx.beginPath();ctx.moveTo(mx+s,my-8);ctx.lineTo(mx+s+6,my-8);ctx.lineTo(mx+s+4,my-22);ctx.lineTo(mx+s-2,my-22);ctx.closePath();ctx.fill();}
+  ctx.fillStyle='#a08060'; ctx.fillRect(mx-30,my+6,60,5);
+  ctx.fillStyle='#fff'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('MARKET',mx,my+2);
+  ctx.fillStyle='#ffd700'; ctx.beginPath(); ctx.arc(mx,my-30,6,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#b8960a'; ctx.font='7px "Press Start 2P"'; ctx.fillText('$',mx,my-27);
+  if(firewoodCount>=MARKET_MIN_WOOD && !cutscene){
+    const a=0.5+Math.sin(Date.now()*0.004)*0.4; ctx.globalAlpha=a;
+    ctx.fillStyle='#ffd700'; ctx.font='7px "Press Start 2P"';
+    ctx.fillText('PRESS M',mx,my-42); ctx.fillText('TO SELL!',mx,my-52); ctx.globalAlpha=1;
+  }
+}
+
+// ─── ANVIL ───
+const ANVIL_X = 160, ANVIL_Y = 330;
+function drawAnvil() {
+  ctx.fillStyle='#555'; ctx.fillRect(ANVIL_X-12,ANVIL_Y+5,24,12);
+  ctx.fillStyle='#666'; ctx.fillRect(ANVIL_X-16,ANVIL_Y-2,32,8);
+  ctx.fillStyle='#777';
+  ctx.beginPath(); ctx.moveTo(ANVIL_X-16,ANVIL_Y-2); ctx.lineTo(ANVIL_X-20,ANVIL_Y-2); ctx.lineTo(ANVIL_X-18,ANVIL_Y+4); ctx.lineTo(ANVIL_X-16,ANVIL_Y+4); ctx.closePath(); ctx.fill();
+  if(cutscene && cutscene.type==='axe' && cutscene.phase>=2 && cutscene.phase<=3){
+    ctx.globalAlpha=0.3+Math.sin(Date.now()*0.01)*0.15;
+    ctx.fillStyle='#ff4400'; ctx.beginPath(); ctx.arc(ANVIL_X,ANVIL_Y-10,25,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  }
+}
+function drawUpgradeSign() {
+  if(axeLevel>=axes.length-1) return;
+  const ux=ANVIL_X, uy=ANVIL_Y-45; const next=axes[axeLevel+1];
+  ctx.fillStyle='#5c3a1e'; ctx.fillRect(ux-3,uy+20,6,25);
+  ctx.fillStyle='#c8a96e'; ctx.fillRect(ux-33,uy-5,66,28);
+  ctx.strokeStyle='#5c3a1e'; ctx.lineWidth=2; ctx.strokeRect(ux-33,uy-5,66,28);
+  ctx.fillStyle='#3a2510'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText('AXE: '+next.name,ux,uy+7);
+  ctx.fillStyle='#ffd700'; ctx.fillText(next.cost+' coins',ux,uy+17);
+  if(coins>=next.cost && !cutscene){
+    const a=0.5+Math.sin(Date.now()*0.005)*0.4; ctx.globalAlpha=a;
+    ctx.fillStyle='#90ff90'; ctx.font='7px "Press Start 2P"'; ctx.fillText('PRESS U',ux,uy-12); ctx.globalAlpha=1;
+  }
+}
+
+// ─── COFFEE SHOP ───
+const COFFEE_X = 830, COFFEE_Y = 330;
+function drawCoffeeShop() {
+  if(coffeeLevel>=coffees.length-1) return;
+  const next=coffees[coffeeLevel+1];
+  ctx.fillStyle='#5c3a1e'; ctx.fillRect(COFFEE_X-2,COFFEE_Y+10,4,20);
+  ctx.fillStyle='#a08060'; ctx.fillRect(COFFEE_X-18,COFFEE_Y+6,36,5);
+  drawCoffeeMug(COFFEE_X, COFFEE_Y-2, coffeeLevel>=1);
+  ctx.fillStyle='#80e080'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText(next.name,COFFEE_X,COFFEE_Y+20);
+  ctx.fillStyle='#ffd700'; ctx.fillText(next.cost+' coins',COFFEE_X,COFFEE_Y+28);
+  if(coins>=next.cost && !cutscene){
+    const a=0.5+Math.sin(Date.now()*0.005)*0.4; ctx.globalAlpha=a;
+    ctx.fillStyle='#80e080'; ctx.font='7px "Press Start 2P"'; ctx.fillText('PRESS C',COFFEE_X,COFFEE_Y-16); ctx.globalAlpha=1;
+  }
+}
+function drawCoffeeMug(x,y,isDbl) {
+  ctx.fillStyle=isDbl?'#e8e8e8':'#d4d4d4';
+  ctx.fillRect(x-5,y-8,10,12);
+  ctx.fillStyle='#4a2810'; ctx.fillRect(x-4,y-7,8,5);
+  ctx.strokeStyle=isDbl?'#e8e8e8':'#d4d4d4'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(x+6,y-2,3,-Math.PI/2,Math.PI/2); ctx.stroke();
+  const t=Date.now()*0.003; ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1;
+  for(let i=0;i<2;i++){ctx.beginPath(); const sx=x-2+i*4;
+    ctx.moveTo(sx,y-9); ctx.quadraticCurveTo(sx+Math.sin(t+i)*3,y-14,sx+Math.sin(t+i+1)*2,y-18); ctx.stroke();}
+}
+
+// ─── JERKY SHOP ───
+const JERKY_X = 830, JERKY_Y = 410;
+function drawJerkyShop() {
+  if(jerkyLevel>=jerkys.length-1) return;
+  const next=jerkys[jerkyLevel+1];
+  ctx.fillStyle='#5c3a1e'; ctx.fillRect(JERKY_X-2,JERKY_Y+10,4,20);
+  ctx.fillStyle='#a08060'; ctx.fillRect(JERKY_X-18,JERKY_Y+6,36,5);
+  drawJerkyBag(JERKY_X, JERKY_Y-2);
+  ctx.fillStyle='#ff9966'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText(next.name,JERKY_X,JERKY_Y+20);
+  ctx.fillStyle='#ffd700'; ctx.fillText(next.cost+' coins',JERKY_X,JERKY_Y+28);
+  if(coins>=next.cost && !cutscene){
+    const a=0.5+Math.sin(Date.now()*0.005)*0.4; ctx.globalAlpha=a;
+    ctx.fillStyle='#ff9966'; ctx.font='7px "Press Start 2P"'; ctx.fillText('PRESS J',JERKY_X,JERKY_Y-16); ctx.globalAlpha=1;
+  }
+}
+function drawJerkyBag(x,y) {
+  ctx.fillStyle='#8B4513'; ctx.fillRect(x-6,y-10,12,14);
+  ctx.fillStyle='#a0522d'; ctx.fillRect(x-6,y-10,12,3);
+  ctx.fillStyle='#ffd700'; ctx.font='3px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('JERKY',x,y);
+}
+
+// ─── FIREWOOD PILE ───
+const WOODPILE_X = 470, WOODPILE_Y = 470;
+function drawFirewoodPile() {
+  if(cutscene && cutscene.type==='market' && cutscene.phase>=2) return;
+  const baseX=WOODPILE_X-40, baseY=WOODPILE_Y;
+  for(let i=0;i<firewoodCount&&i<80;i++){
+    const row=Math.floor(i/8), col=i%8, x=baseX+col*11, y=baseY-row*8;
+    ctx.fillStyle=i%3===0?'#8B6914':i%3===1?'#a0522d':'#c4a87a';
+    ctx.fillRect(x-4,y-3,8,7);
+    ctx.fillStyle='#d4b86a'; ctx.beginPath(); ctx.ellipse(x,y,4,3.5,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#6b4f10'; ctx.lineWidth=0.5; ctx.beginPath(); ctx.ellipse(x,y,3,2.5,0,0,Math.PI*2); ctx.stroke();
+  }
+  if(firewoodCount>0){
+    ctx.fillStyle='#c8a96e'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText(firewoodCount+' WOOD',WOODPILE_X,baseY+14);
+  }
+}
+
+// ─── LUMBERJACK ───
+function drawLumberjack(time) {
+  let x=jack.x, y=jack.y;
+  const f=jack.facing;
+  const bobY=jack.isWalking?Math.sin(jack.walkTimer*0.3)*2:0;
+  y+=bobY;
+  if(jack.jitterTimer>0){ x+=(Math.random()-0.5)*jack.jitter; y+=(Math.random()-0.5)*jack.jitter*0.5; }
+
+  ctx.save(); ctx.translate(x,y); ctx.scale(f,1);
+
+  let axeAngle=0;
+  if(jack.isChopping){
+    const p=jack.chopPhase;
+    if(p<0.4) axeAngle=-Math.PI*0.8*(p/0.4);
+    else if(p<0.6) axeAngle=-Math.PI*0.8+Math.PI*1.2*((p-0.4)/0.2);
+    else axeAngle=Math.PI*0.4*(1-(p-0.6)/0.4);
+  }
+
+  // Legs
+  const ls=jack.isWalking?Math.sin(jack.walkTimer*0.3)*8:0;
+  ctx.fillStyle='#3a5fad';
+  ctx.save(); ctx.translate(-4,0); ctx.rotate(ls*Math.PI/180);
+  ctx.fillRect(-4,0,8,18); ctx.fillStyle='#4a3020'; ctx.fillRect(-4,16,10,5); ctx.restore();
+  ctx.save(); ctx.translate(4,0); ctx.rotate(-ls*Math.PI/180);
+  ctx.fillStyle='#3a5fad'; ctx.fillRect(-4,0,8,18); ctx.fillStyle='#4a3020'; ctx.fillRect(-5,16,10,5); ctx.restore();
+
+  // Body
+  ctx.fillStyle='#c43030'; ctx.fillRect(-10,-24,20,26);
+  ctx.strokeStyle='#8a1a1a'; ctx.lineWidth=2;
+  for(let ly=-22;ly<2;ly+=6){ctx.beginPath();ctx.moveTo(-10,ly);ctx.lineTo(10,ly);ctx.stroke();}
+  ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,-24); ctx.lineTo(0,2); ctx.stroke();
+
+  // Suspenders
+  ctx.fillStyle='#5a3a1e'; ctx.fillRect(-7,-22,3,44); ctx.fillRect(4,-22,3,44);
+  ctx.fillStyle='#d4a030';
+  ctx.beginPath(); ctx.arc(-5.5,-4,1.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5.5,-4,1.5,0,Math.PI*2); ctx.fill();
+
+  // Back arm
+  ctx.fillStyle='#c43030';
+  ctx.save(); ctx.translate(-10,-20);
+  const ba=jack.isChopping?axeAngle*0.3:(jack.isWalking?Math.sin(jack.walkTimer*0.3+Math.PI)*15*Math.PI/180:0);
+  ctx.rotate(ba); ctx.fillRect(-3,0,6,16);
+  ctx.fillStyle='#e8b88a'; ctx.fillRect(-2,14,5,5); ctx.restore();
+
+  // Carrying wood
+  if(jack.carrying){
+    ctx.save(); ctx.translate(0,-30);
+    for(let i=0;i<Math.min(jack.carryCount,5);i++){
+      ctx.fillStyle=i%2===0?'#8B6914':'#a0522d';
+      ctx.fillRect(-8+i*3,-6-i*4,10,7);
+      ctx.fillStyle='#d4b86a'; ctx.beginPath(); ctx.ellipse(-3+i*3,-3-i*4,4,3,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Drinking
+  if(jack.drinking){
+    ctx.save(); ctx.translate(8,-18); ctx.rotate(-0.5);
+    ctx.fillStyle='#c43030'; ctx.fillRect(-3,-8,6,14);
+    ctx.fillStyle='#e8b88a'; ctx.fillRect(-2,4,5,5);
+    ctx.fillStyle='#d4d4d4'; ctx.fillRect(-1,-14,8,10);
+    ctx.fillStyle='#4a2810'; ctx.fillRect(0,-13,6,4);
+    ctx.restore();
+  }
+  // Eating jerky
+  else if(jack.eating){
+    ctx.save(); ctx.translate(8,-18); ctx.rotate(-0.3);
+    ctx.fillStyle='#c43030'; ctx.fillRect(-3,-6,6,14);
+    ctx.fillStyle='#e8b88a'; ctx.fillRect(-2,6,5,5);
+    ctx.fillStyle='#6b3010'; ctx.fillRect(0,-10,4,8);
+    ctx.fillStyle='#8B4513'; ctx.fillRect(1,-9,2,6);
+    ctx.restore();
+  }
+  else {
+    // Front arm + axe
+    ctx.save(); ctx.translate(8,-22);
+    const fa=jack.isChopping?axeAngle*0.8:(jack.isWalking?Math.sin(jack.walkTimer*0.3)*15*Math.PI/180:0.1);
+    ctx.rotate(fa); ctx.fillStyle='#c43030'; ctx.fillRect(-3,0,6,16);
+    ctx.fillStyle='#e8b88a'; ctx.fillRect(-2,14,5,5);
+    if(jack.hasAxe){
+      ctx.fillStyle='#8B7355'; ctx.fillRect(1,14,3,28);
+      const axe=axes[axeLevel];
+      ctx.fillStyle=axe.color;
+      ctx.beginPath(); ctx.moveTo(0,38); ctx.lineTo(-8,44); ctx.lineTo(-6,48); ctx.lineTo(4,44); ctx.closePath(); ctx.fill();
+      ctx.fillStyle=axe.shine;
+      ctx.beginPath(); ctx.moveTo(-7,44); ctx.lineTo(-8,44); ctx.lineTo(-6,48); ctx.lineTo(-5,47); ctx.closePath(); ctx.fill();
+      if(axeLevel>=3){
+        ctx.globalAlpha=0.3+Math.sin(Date.now()*0.005)*0.15;
+        ctx.shadowColor=axe.color; ctx.shadowBlur=8; ctx.fillStyle=axe.color;
+        ctx.beginPath(); ctx.moveTo(0,38); ctx.lineTo(-8,44); ctx.lineTo(-6,48); ctx.lineTo(4,44); ctx.closePath(); ctx.fill();
+        ctx.shadowBlur=0; ctx.globalAlpha=1;
+      }
+    }
+    ctx.restore();
+  }
+
+  // Head
+  ctx.fillStyle='#e8b88a'; ctx.fillRect(-8,-38,16,14);
+  ctx.fillStyle='#2a2a2a'; ctx.fillRect(-5,-34,3,3); ctx.fillRect(3,-34,3,3);
+  if(jack.drinking||jack.eating){
+    ctx.fillStyle='#c07050'; ctx.beginPath(); ctx.arc(0,-26,3,0,Math.PI); ctx.fill();
+  } else { ctx.fillStyle='#a06040'; ctx.fillRect(-3,-27,6,2); }
+  ctx.fillStyle='#5a3a1e'; ctx.fillRect(-7,-26,14,4); ctx.fillRect(-5,-22,10,2);
+
+  // Beanie
+  ctx.fillStyle='#cc2222';
+  ctx.beginPath(); ctx.ellipse(0,-40,10,5,0,Math.PI,0); ctx.fill();
+  ctx.fillRect(-10,-42,20,4);
+  ctx.fillStyle='#991818'; ctx.fillRect(-10,-40,20,3);
+  ctx.fillStyle='#cc2222'; ctx.beginPath(); ctx.arc(0,-45,4,0,Math.PI*2); ctx.fill();
+
+  ctx.restore();
+
+  // Speed lines
+  if(jack.isWalking && coffeeLevel>=1){
+    ctx.strokeStyle='rgba(255,200,100,0.25)'; ctx.lineWidth=1;
+    const dir=-jack.facing;
+    for(let i=0;i<coffeeLevel+1;i++){
+      const ly=jack.y-20+i*12, lx=jack.x+dir*15;
+      ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(lx+dir*(10+coffeeLevel*5),ly); ctx.stroke();
+    }
+  }
+}
+
+// ─── SPLIT ANIM ───
+function triggerSplit(log) {
+  const pieces=3+Math.floor(Math.random()*3);
+  for(let i=0;i<pieces;i++){
+    const angle=(Math.PI*2*i/pieces)+Math.random()*0.5;
+    splitAnimations.push({
+      x:log.x, y:log.y-30, vx:Math.cos(angle)*(2+Math.random()*3), vy:-3-Math.random()*4,
+      r:log.diameter/4, color:log.color, faceColor:'#d4b86a',
+      life:1, grounded:false, groundY:log.y+5+Math.random()*15, rotation:Math.random()*Math.PI
+    });
+  }
+  firewoodCount+=pieces; firewoodEl.textContent=firewoodCount;
+}
+function updateSplitAnimations(){
+  splitAnimations.forEach(s=>{
+    if(!s.grounded){s.vy+=0.2;s.x+=s.vx;s.y+=s.vy;s.rotation+=0.1;if(s.y>=s.groundY){s.y=s.groundY;s.grounded=true;s.vx=0;s.vy=0;}}
+    if(s.grounded)s.life-=0.008;
+  }); splitAnimations=splitAnimations.filter(s=>s.life>0);
+}
+function drawSplitAnimations(){
+  splitAnimations.forEach(s=>{
+    ctx.save(); ctx.globalAlpha=Math.max(0,s.life); ctx.translate(s.x,s.y); ctx.rotate(s.rotation);
+    const w=s.r,h=s.r*0.7; ctx.fillStyle=s.color; ctx.fillRect(-w/2,-h/2,w,h);
+    ctx.fillStyle=s.faceColor; ctx.beginPath(); ctx.ellipse(0,0,w/2-1,h/2-1,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+  });
+}
+
+// ─── PARTICLES ───
+function spawnChopParticles(x,y){for(let i=0;i<8;i++)particles.push({x,y:y-30,vx:(Math.random()-0.5)*4,vy:-Math.random()*3-1,life:1,color:Math.random()>0.5?'#d4b86a':'#8B7355',size:2+Math.random()*3});}
+function spawnCoinParticles(x,y,c){for(let i=0;i<c;i++)particles.push({x:x+(Math.random()-0.5)*30,y:y-20,vx:(Math.random()-0.5)*3,vy:-Math.random()*4-2,life:1,color:'#ffd700',size:3+Math.random()*2});}
+function spawnBlacksmithSparks(x,y){for(let i=0;i<12;i++)blacksmithSparks.push({x,y,vx:(Math.random()-0.5)*6,vy:-Math.random()*5-2,life:1,color:Math.random()>0.5?'#ffa030':'#ff6600',size:2+Math.random()*2});}
+function updateParticles(){
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life-=0.02;}); particles=particles.filter(p=>p.life>0);
+  blacksmithSparks.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.life-=0.025;}); blacksmithSparks=blacksmithSparks.filter(p=>p.life>0);
+}
+function drawParticles(){
+  [...particles,...blacksmithSparks].forEach(p=>{ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);});ctx.globalAlpha=1;
+}
+
+// ─── FLOATING MESSAGES ───
+function addFloatingMessage(x,y,text,color){floatingMessages.push({x,y,text,color,life:1});}
+function updateFloatingMessages(){floatingMessages.forEach(m=>{m.y-=0.8;m.life-=0.012;});floatingMessages=floatingMessages.filter(m=>m.life>0);}
+function drawFloatingMessages(){
+  floatingMessages.forEach(m=>{ctx.globalAlpha=m.life;ctx.fillStyle=m.color;ctx.font='10px "Press Start 2P"';ctx.textAlign='center';ctx.fillText(m.text,m.x,m.y);});ctx.globalAlpha=1;
+}
+
+function findNearestLog(){let n=null,d=50;logs.forEach(l=>{if(l.chopped)return;const dd=Math.abs(jack.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
+
+function drawProximityHint(){
+  if(cutscene) return;
+  const nl=findNearestLog();
+  if(nl&&!jack.isChopping&&!jack.isWalking){
+    const a=0.5+Math.sin(Date.now()*0.005)*0.3; ctx.globalAlpha=a;
+    ctx.fillStyle='#fff'; ctx.font='10px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('SPACE',nl.x,nl.y-55-nl.diameter); ctx.globalAlpha=1;
+  }
+}
+
+function drawMarketMessage(){
+  if(!marketMessage)return; marketMessage.timer--;
+  if(marketMessage.timer<=0){marketMessage=null;return;}
+  ctx.globalAlpha=Math.min(1,marketMessage.timer/30); ctx.fillStyle=marketMessage.color;
+  ctx.font='14px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText(marketMessage.text,55,290-(90-marketMessage.timer)*0.5); ctx.globalAlpha=1;
+}
+
+// ─── CUTSCENE LOGIC ───
+function updateCutscene(){
+  if(!cutscene) return;
+  cutscene.timer++;
+
+  if(cutscene.type==='market'){
+    if(cutscene.phase===0){
+      jack.targetX=WOODPILE_X; jack.facing=jack.x>WOODPILE_X?-1:1;
+      if(Math.abs(jack.x-WOODPILE_X)<8){cutscene.phase=1;cutscene.timer=0;}
+    } else if(cutscene.phase===1){
+      jack.isWalking=false;
+      if(cutscene.timer>30){jack.carrying=true;jack.carryCount=Math.min(firewoodCount,5);cutscene.phase=2;cutscene.timer=0;}
+    } else if(cutscene.phase===2){
+      jack.targetX=55; jack.facing=-1;
+      if(Math.abs(jack.x-55)<8){cutscene.phase=3;cutscene.timer=0;}
+    } else if(cutscene.phase===3){
+      jack.isWalking=false; jack.carrying=false;
+      if(cutscene.timer===1){
+        const earned=firewoodCount*WOOD_PRICE; coins+=earned; coinsEl.textContent=coins;
+        firewoodCount=0; firewoodEl.textContent=0;
+        addFloatingMessage(55,270,'+'+earned+' coins!','#ffd700');
+        spawnCoinParticles(55,330,15);
+        marketMessage={text:'SOLD!',timer:90,color:'#ffd700'};
+      }
+      if(cutscene.timer>60){cutscene=null;}
+    }
+  }
+
+  else if(cutscene.type==='axe'){
+    if(cutscene.phase===0){
+      jack.targetX=ANVIL_X+30; jack.facing=-1;
+      if(Math.abs(jack.x-(ANVIL_X+30))<8){cutscene.phase=1;cutscene.timer=0;}
+    } else if(cutscene.phase===1){
+      jack.isWalking=false;
+      if(cutscene.timer===15) jack.hasAxe=false;
+      if(cutscene.timer>40){cutscene.phase=2;cutscene.timer=0;}
+    } else if(cutscene.phase===2){
+      jack.isWalking=false;
+      if(cutscene.timer%12===0) spawnBlacksmithSparks(ANVIL_X,ANVIL_Y);
+      if(cutscene.timer>90){cutscene.phase=3;cutscene.timer=0;}
+    } else if(cutscene.phase===3){
+      if(cutscene.timer===1){
+        coins-=cutscene.data.cost; coinsEl.textContent=coins;
+        axeLevel++; axeLevelEl.textContent=axes[axeLevel].name;
+        jack.hasAxe=true;
+        addFloatingMessage(ANVIL_X,ANVIL_Y-60,axes[axeLevel].name+' AXE!','#90e0ff');
+        spawnCoinParticles(ANVIL_X,ANVIL_Y,10);
+      }
+      if(cutscene.timer>50){cutscene=null;}
+    }
+  }
+
+  else if(cutscene.type==='coffee'){
+    if(cutscene.phase===0){
+      jack.targetX=COFFEE_X-25; jack.facing=1;
+      if(Math.abs(jack.x-(COFFEE_X-25))<8){cutscene.phase=1;cutscene.timer=0;}
+    } else if(cutscene.phase===1){
+      jack.isWalking=false;
+      if(cutscene.timer===1){
+        coins-=cutscene.data.cost; coinsEl.textContent=coins;
+        coffeeLevel++; coffeeLevelEl.textContent=coffees[coffeeLevel].name;
+        jack.drinking=true;
+      }
+      if(cutscene.timer>50){cutscene.phase=2;cutscene.timer=0;}
+    } else if(cutscene.phase===2){
+      jack.drinking=false; jack.jitter=6; jack.jitterTimer=1;
+      if(cutscene.timer===1){
+        addFloatingMessage(jack.x,jack.y-80,coffees[coffeeLevel].name+'!','#80e080');
+        for(let i=0;i<20;i++) particles.push({x:jack.x+(Math.random()-0.5)*20,y:jack.y-20,vx:(Math.random()-0.5)*6,vy:-Math.random()*5-2,life:1,color:'#8B4513',size:2+Math.random()*3});
+      }
+      jack.jitter=6*(1-cutscene.timer/80);
+      if(cutscene.timer>80){jack.jitter=0;jack.jitterTimer=0;cutscene=null;}
+    }
+  }
+
+  else if(cutscene.type==='jerky'){
+    if(cutscene.phase===0){
+      jack.targetX=JERKY_X-25; jack.facing=1;
+      if(Math.abs(jack.x-(JERKY_X-25))<8){cutscene.phase=1;cutscene.timer=0;}
+    } else if(cutscene.phase===1){
+      jack.isWalking=false;
+      if(cutscene.timer===1){
+        coins-=cutscene.data.cost; coinsEl.textContent=coins;
+        jerkyLevel++; jerkyLevelEl.textContent=jerkys[jerkyLevel].name;
+        jack.eating=true;
+      }
+      if(cutscene.timer>55){cutscene.phase=2;cutscene.timer=0;}
+    } else if(cutscene.phase===2){
+      jack.eating=false;
+      if(cutscene.timer===1){
+        addFloatingMessage(jack.x,jack.y-80,jerkys[jerkyLevel].name+'!','#ff9966');
+        for(let i=0;i<15;i++) particles.push({x:jack.x+(Math.random()-0.5)*20,y:jack.y-20,vx:(Math.random()-0.5)*4,vy:-Math.random()*4-1,life:1,color:Math.random()>0.5?'#ff6633':'#ff9944',size:2+Math.random()*3});
+      }
+      if(cutscene.timer>40){cutscene=null;}
+    }
+  }
+}
+
+// ─── ACTIONS ───
+function sellAtMarket(){
+  if(isBusy())return;
+  if(firewoodCount<MARKET_MIN_WOOD){addFloatingMessage(55,290,'Need 15+ wood!','#ff6666');return;}
+  startCutscene('market',{});
+}
+function upgradeAxe(){
+  if(isBusy())return;
+  if(axeLevel>=axes.length-1){addFloatingMessage(ANVIL_X,ANVIL_Y-50,'MAX AXE!','#ffd700');return;}
+  const next=axes[axeLevel+1];
+  if(coins<next.cost){addFloatingMessage(ANVIL_X,ANVIL_Y-50,'Need '+next.cost+'!','#ff6666');return;}
+  startCutscene('axe',{cost:next.cost});
+}
+function buyCoffee(){
+  if(isBusy())return;
+  if(coffeeLevel>=coffees.length-1){addFloatingMessage(COFFEE_X,COFFEE_Y-30,'MAX HUSTLE!','#80e080');return;}
+  const next=coffees[coffeeLevel+1];
+  if(coins<next.cost){addFloatingMessage(COFFEE_X,COFFEE_Y-30,'Need '+next.cost+'!','#ff6666');return;}
+  startCutscene('coffee',{cost:next.cost});
+}
+function buyJerky(){
+  if(isBusy())return;
+  if(jerkyLevel>=jerkys.length-1){addFloatingMessage(JERKY_X,JERKY_Y-30,'MAX POWER!','#ff9966');return;}
+  const next=jerkys[jerkyLevel+1];
+  if(coins<next.cost){addFloatingMessage(JERKY_X,JERKY_Y-30,'Need '+next.cost+'!','#ff6666');return;}
+  startCutscene('jerky',{cost:next.cost});
+}
+
+// ─── INPUT ───
+canvas.addEventListener('click',(e)=>{
+  if(isBusy())return;
+  const rect=canvas.getBoundingClientRect(); const scaleX=canvas.width/rect.width;
+  jack.targetX=Math.max(50,Math.min(850,(e.clientX-rect.left)*scaleX));
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'){
+    e.preventDefault(); if(isBusy())return;
+    const nl=findNearestLog();
+    if(nl){
+      jack.isChopping=true; jack.chopPhase=0;
+      jack.facing=jack.x<nl.x?1:jack.x>nl.x?-1:jack.facing;
+      setTimeout(()=>{
+        nl.chopProgress++; spawnChopParticles(nl.x,nl.y);
+        if(nl.chopProgress>=nl.maxChops){
+          nl.chopped=true; logsChopped++; scoreEl.textContent=logsChopped;
+          triggerSplit(nl); setTimeout(()=>spawnLog(),1200);
+        }
+      },350);
+    }
+  }
+  if(e.code==='KeyM') sellAtMarket();
+  if(e.code==='KeyU') upgradeAxe();
+  if(e.code==='KeyC') buyCoffee();
+  if(e.code==='KeyJ') buyJerky();
+});
+
+// ─── MAIN LOOP ───
+function gameLoop(timestamp){
+  gameTime=timestamp;
+  const dx=jack.targetX-jack.x;
+  if(Math.abs(dx)>3 && !jack.isChopping && !jack.drinking && !jack.eating){
+    jack.isWalking=true; jack.x+=Math.sign(dx)*getJackSpeed(); jack.facing=dx>0?1:-1; jack.walkTimer++;
+  } else if(!jack.isChopping){ jack.isWalking=false; }
+
+  if(jack.isChopping){ jack.chopPhase+=getChopSpeed(); if(jack.chopPhase>=1){jack.isChopping=false;jack.chopPhase=0;} }
+
+  updateCutscene(); updateParticles(); updateSplitAnimations(); updateFloatingMessages();
+
+  ctx.clearRect(0,0,900,520);
+  drawSky(); drawClouds(timestamp); drawMountains(); drawBackgroundTrees(); drawGround();
+  drawMarketStall(); drawAnvil(); drawUpgradeSign(); drawCoffeeShop(); drawJerkyShop();
+  blockPositions.forEach(bx=>drawChoppingBlock(bx,400));
+  logs.forEach(l=>drawLog(l));
+  drawSplitAnimations(); drawFirewoodPile();
+  drawLumberjack(timestamp);
+  drawParticles(); drawProximityHint(); drawMarketMessage(); drawFloatingMessages();
+
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
