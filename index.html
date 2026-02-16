@@ -48,7 +48,7 @@ canvas{image-rendering:pixelated;display:block}
 </div>
 <canvas id="game"></canvas>
 <div id="instructions">
-  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell dry stack | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack wood (50+)
+  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell dry stack | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack wood (30+)
 </div>
 <div id="touch-controls">
   <button class="tb" onclick="doSell()">SELL</button>
@@ -125,7 +125,10 @@ function spawnLog(){
   const sp=SPECIES[Math.floor(Math.random()*SPECIES.length)];
   logs.push({x,y:410,sp,done:false,prog:0,max:maxChops(sp),diam:28+Math.random()*18});
 }
-for(let i=0;i<4;i++)spawnLog();
+for(let i=0;i<5;i++)spawnLog();
+
+// Periodically clean up done logs to prevent memory buildup
+setInterval(()=>{logs=logs.filter(l=>!l.done);},5000);
 
 function isBusy(){return cutscene||J.chop;}
 function startCS(t,d){cutscene={type:t,phase:0,timer:0,data:d||{}};}
@@ -202,11 +205,12 @@ function drawLog(log){
   oText(sp.abbr,x,bY-13,sp.color,7);
 }
 
-// ─── FRESH WOOD PILES (below blocks) ───
+// ─── FRESH WOOD PILES (dedicated row at bottom) ───
+const PILE_X=[96,288,480,672,864]; // evenly spaced across canvas
 function drawFreshPiles(){
   SPECIES.forEach((sp,si)=>{
     const count=freshWood[sp.id];if(!count)return;
-    const bx=BLOCK_X[si],by=490;
+    const bx=PILE_X[si],by=500;
     // Messy pile of split firewood pieces
     for(let i=0;i<Math.min(count,30);i++){
       const r=Math.floor(i/6),c=i%6;
@@ -483,7 +487,7 @@ function updateCS(){
     }
   }
   else if(cs.type==='stack'){
-    const si=cs.data.speciesIdx;const bx=BLOCK_X[si];
+    const si=cs.data.speciesIdx;const bx=PILE_X[si];
     if(cs.phase===0){J.tx=bx;J.f=J.x>bx?-1:1;if(Math.abs(J.x-bx)<8){cs.phase=1;cs.timer=0;}}
     else if(cs.phase===1){J.walk=false;if(cs.timer>20){J.carry=true;J.cc=4;cs.phase=2;cs.timer=0;}}
     else if(cs.phase===2){
@@ -498,7 +502,7 @@ function updateCS(){
     }
   }
   else if(cs.type==='axe'){
-    if(cs.phase===0){J.tx=AX_X-25;J.f=1;if(Math.abs(J.x-(AX_X-25))<8){cs.phase=1;cs.timer=0;}}
+    if(cs.phase===0){J.tx=AX_X+25;J.f=J.x>AX_X+25?-1:1;if(Math.abs(J.x-(AX_X+25))<8){J.f=-1;cs.phase=1;cs.timer=0;}}
     else if(cs.phase===1){J.walk=false;if(cs.timer===15)J.hasAxe=false;if(cs.timer>40){cs.phase=2;cs.timer=0;}}
     else if(cs.phase===2){J.walk=false;if(cs.timer%12===0)spawnSparks(AX_X,AX_Y);if(cs.timer>90){cs.phase=3;cs.timer=0;}}
     else if(cs.phase===3){if(cs.timer===1){coins-=cs.data.cost;coinsEl.textContent=coins;axeLv++;axeEl.textContent=AXES[axeLv].name;J.hasAxe=true;addMsg(AX_X,AX_Y-70,AXES[axeLv].name+' AXE!','#90e0ff');spawnCoinP(AX_X,AX_Y,10);}if(cs.timer>50)cutscene=null;}
@@ -559,7 +563,7 @@ function doChop(){
 
 function doStack(){
   if(isBusy())return;
-  // Find first species with 50+ fresh wood and room for stacks
+  // Find first species with 30+ fresh wood and room for stacks
   for(let si=0;si<SPECIES.length;si++){
     const sp=SPECIES[si];
     if(freshWood[sp.id]>=STACK_SIZE){
