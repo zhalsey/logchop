@@ -43,8 +43,8 @@ canvas{image-rendering:pixelated;display:block}
   <span>LOGS:<span id="hS">0</span></span>
   <span class="hc">COINS:<span id="hC">15</span></span>
   <span class="ha">AXE:<span id="hA">Starter</span></span>
-  <span class="hl">COFFEE:<span id="hCo">Normal</span></span>
-  <span class="hp">JERKY:<span id="hJ">Normal</span></span>
+  <span class="hl">ENERGY:<span id="hCo">None</span></span>
+  <span class="hp">STRENGTH:<span id="hJ">None</span></span>
   <span id="hShWrap" style="display:none">SHEDS:<span id="hSh">0</span>/5</span>
 </div>
 <canvas id="game"></canvas>
@@ -57,7 +57,7 @@ canvas{image-rendering:pixelated;display:block}
   <button class="tb" onclick="upgradeAxe()">AXE</button>
   <button class="tb" onclick="buyCoffee()">COFFEE</button>
   <button class="tb" onclick="buyJerky()">JERKY</button>
-  <button class="tb" onclick="buyShed()">SHED</button>
+  <button class="tb" id="shedBtn" onclick="buyShed()">🔒 SHED</button>
   <button class="tb tc2" onclick="doChop()">CHOP</button>
 </div>
 </div>
@@ -204,7 +204,9 @@ const hS=document.getElementById('hS'),hSh=document.getElementById('hSh');
 function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
   hCo.textContent=COFFEES[coffeeLv].name;hJ.textContent=JERKYS[jerkyLv].name;
   hS.textContent=logsChopped;hSh.textContent=shedCount();
-  if(axeLv>=AXES.length-1)document.getElementById('hShWrap').style.display='';}
+  const sb=document.getElementById('shedBtn');
+  if(axeLv>=AXES.length-1){document.getElementById('hShWrap').style.display='';sb.textContent='SHED';}
+  else{sb.textContent='\u{1F512} SHED';}}
 
 // ═══ DRAWING ═══
 function gf(s){return s+'px "Press Start 2P"';}
@@ -229,13 +231,52 @@ function drawBlock(x,y){X.fillStyle='#8B7355';X.fillRect(x-18,y-20,36,22);X.fill
 function drawLog(log){
   if(log.done)return;
   const x=log.x,y=log.y,r=log.diam/2,sp=log.sp;
-  X.fillStyle=sp.logColor;X.fillRect(x-r,y-28-r*1.1,r*2,r*1.1);
-  X.fillStyle=sp.ringColor;X.beginPath();X.ellipse(x,y-28-r*1.1,r,r*0.4,0,0,Math.PI*2);X.fill();
+  // Log sits ON the block - block top is at y-20 when drawn at y
+  // Log barrel bottom aligns with block top
+  const blockTop=420-20; // block drawn at 420, top face at y-20 = 400
+  const logBot=blockTop-3; // sit just on top
+  const logH=r*1.1; // barrel height
+  const logTop=logBot-logH;
+  const faceY=logTop; // top ellipse center
+
+  // Barrel (sides)
+  X.fillStyle=sp.logColor;X.fillRect(x-r,logTop,r*2,logH);
+  // Top face (end grain)
+  X.fillStyle=sp.ringColor;X.beginPath();X.ellipse(x,faceY,r,r*0.4,0,0,Math.PI*2);X.fill();
+  // Ring lines
   X.strokeStyle=sp.logColor;X.lineWidth=1;
-  for(let i=1;i<=3;i++){X.beginPath();X.ellipse(x,y-28-r*1.1,r*(i/4),r*0.4*(i/4),0,0,Math.PI*2);X.stroke();}
-  X.strokeStyle='#3a2510';X.lineWidth=2;X.beginPath();X.ellipse(x,y-28-r*1.1,r,r*0.4,0,0,Math.PI*2);X.stroke();
-  if(log.prog>0){X.strokeStyle='#ffe0a0';X.lineWidth=2;for(let i=0;i<log.prog;i++){const cx=x-(log.prog*2)+i*4;X.beginPath();X.moveTo(cx,y-28-r*1.6);X.lineTo(cx,y-28-r*0.5);X.stroke();}}
-  const bW=r*2,bH=5,bX=x-r,bY=y-28-r*1.1-r*0.4-18;
+  for(let i=1;i<=3;i++){X.beginPath();X.ellipse(x,faceY,r*(i/4),r*0.4*(i/4),0,0,Math.PI*2);X.stroke();}
+  // Outer rim
+  X.strokeStyle='#3a2510';X.lineWidth=2;X.beginPath();X.ellipse(x,faceY,r,r*0.4,0,0,Math.PI*2);X.stroke();
+
+  // Pie-wedge split marks on top face
+  if(log.prog>0){
+    const slices=log.prog;
+    const angleStep=Math.PI*2/log.max;
+    X.save();
+    // Clip to log face ellipse
+    X.beginPath();X.ellipse(x,faceY,r-1,r*0.4-1,0,0,Math.PI*2);X.clip();
+    for(let i=0;i<slices;i++){
+      const a1=angleStep*i-Math.PI/2;
+      const a2=a1+angleStep*0.15; // thin wedge
+      // Draw split line from center outward
+      X.strokeStyle='#ffe0a0';X.lineWidth=2;
+      X.beginPath();
+      X.moveTo(x,faceY);
+      X.lineTo(x+Math.cos(a1)*r*1.2,faceY+Math.sin(a1)*r*0.5);
+      X.stroke();
+      // Slight gap/shadow along split
+      X.strokeStyle='rgba(60,30,10,0.5)';X.lineWidth=1;
+      X.beginPath();
+      X.moveTo(x,faceY);
+      X.lineTo(x+Math.cos(a1+0.05)*r*1.2,faceY+Math.sin(a1+0.05)*r*0.5);
+      X.stroke();
+    }
+    X.restore();
+  }
+
+  // Progress bar
+  const bW=r*2,bH=5,bX=x-r,bY=faceY-r*0.4-18;
   X.fillStyle='rgba(0,0,0,0.4)';X.fillRect(bX,bY,bW,bH);
   const pct=log.prog/log.max;
   X.fillStyle=pct>0.7?'#ff6644':pct>0.4?'#ffaa44':'#88cc44';
@@ -475,14 +516,14 @@ function drawGoldenShimmer(){
 
 // ═══ PARTICLES / ANIMS ═══
 function triggerSplit(log){
-  const pc=3+Math.floor(Math.random()*3);
-  for(let i=0;i<pc;i++){const a=(Math.PI*2*i/pc)+Math.random()*0.5;splitAnims.push({x:log.x,y:log.y-30,vx:Math.cos(a)*(2+Math.random()*3),vy:-3-Math.random()*4,r:log.diam/4,color:log.sp.logColor,fc:'#d4b86a',life:1,gnd:false,gy:log.y+5+Math.random()*15,rot:Math.random()*Math.PI});}
+  const pc=3+Math.floor(Math.random()*3);const sy=380;
+  for(let i=0;i<pc;i++){const a=(Math.PI*2*i/pc)+Math.random()*0.5;splitAnims.push({x:log.x,y:sy,vx:Math.cos(a)*(2+Math.random()*3),vy:-3-Math.random()*4,r:log.diam/4,color:log.sp.logColor,fc:'#d4b86a',life:1,gnd:false,gy:420+Math.random()*15,rot:Math.random()*Math.PI});}
   freshWood[log.sp.id]+=pc;
 }
 function updateSplits(){splitAnims.forEach(s=>{if(!s.gnd){s.vy+=0.2;s.x+=s.vx;s.y+=s.vy;s.rot+=0.1;if(s.y>=s.gy){s.y=s.gy;s.gnd=true;s.vx=0;s.vy=0;}}if(s.gnd)s.life-=0.01;});splitAnims=splitAnims.filter(s=>s.life>0);}
 function drawSplits(){splitAnims.forEach(s=>{X.save();X.globalAlpha=Math.max(0,s.life);X.translate(s.x,s.y);X.rotate(s.rot);const w=s.r,h=s.r*0.7;X.fillStyle=s.color;X.fillRect(-w/2,-h/2,w,h);X.fillStyle=s.fc;X.beginPath();X.ellipse(0,0,w/2-1,h/2-1,0,0,Math.PI*2);X.fill();X.restore();});}
 
-function spawnChopP(x,y){for(let i=0;i<8;i++)particles.push({x,y:y-30,vx:(Math.random()-0.5)*4,vy:-Math.random()*3-1,life:1,c:Math.random()>0.5?'#d4b86a':'#8B7355',sz:2+Math.random()*3});}
+function spawnChopP(x,y){const vy2=375;for(let i=0;i<8;i++)particles.push({x,y:vy2,vx:(Math.random()-0.5)*4,vy:-Math.random()*3-1,life:1,c:Math.random()>0.5?'#d4b86a':'#8B7355',sz:2+Math.random()*3});}
 function spawnCoinP(x,y,n){for(let i=0;i<n;i++)particles.push({x:x+(Math.random()-0.5)*30,y:y-20,vx:(Math.random()-0.5)*3,vy:-Math.random()*4-2,life:1,c:'#ffd700',sz:3+Math.random()*2});}
 function spawnSparks(x,y){for(let i=0;i<12;i++)bsSparks.push({x,y,vx:(Math.random()-0.5)*6,vy:-Math.random()*5-2,life:1,c:Math.random()>0.5?'#ffa030':'#ff6600',sz:2+Math.random()*2});}
 function updateP(){particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life-=0.02;});particles=particles.filter(p=>p.life>0);bsSparks.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.life-=0.025;});bsSparks=bsSparks.filter(p=>p.life>0);}
@@ -495,7 +536,7 @@ function drawMsgs(){floatMsgs.forEach(m=>{X.globalAlpha=m.life;oText(m.text,m.x,
 function nearest(){let n=null,d=Infinity;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
 function nearestClose(){let n=null,d=55;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
 
-function drawHint(){if(cutscene)return;const nl=nearestClose();if(nl&&!J.chop&&!J.walk){const a=0.5+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('CHOP',nl.x,nl.y-55-nl.diam,'#fff',11);X.globalAlpha=1;}}
+function drawHint(){if(cutscene)return;const nl=nearestClose();if(nl&&!J.chop&&!J.walk){const a=0.5+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('CHOP',nl.x,355-nl.diam,'#fff',11);X.globalAlpha=1;}}
 
 function drawMarketMsg(){if(!marketMsg)return;marketMsg.timer--;if(marketMsg.timer<=0){marketMsg=null;return;}X.globalAlpha=Math.min(1,marketMsg.timer/30);oText(marketMsg.text,GW/2,280-(90-marketMsg.timer)*0.4,marketMsg.color,15);X.globalAlpha=1;}
 
