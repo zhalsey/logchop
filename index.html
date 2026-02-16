@@ -23,6 +23,9 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;font-family:'Press Start 2P',monospace;user-select:none;-webkit-user-select:none;touch-action:none}
 #gc{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+#gtitle{position:absolute;top:3px;left:8px;z-index:10;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 6px rgba(0,0,0,0.6)}
+#gtitle .gname{color:#ffd700;font-size:12px;display:block}
+#gtitle .glvl{color:#c8a96e;font-size:8px;display:block;margin-top:2px}
 #hud{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;color:#fff;font-size:10px;position:absolute;top:2px;left:0;right:0;text-align:center;z-index:10;padding:2px 6px}
 #hud span{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,0.5);white-space:nowrap}
 .hc{color:#ffd700!important}.ha{color:#a0c8ff!important}.hl{color:#80e080!important}.hp{color:#ff9966!important}
@@ -39,6 +42,7 @@ canvas{image-rendering:pixelated;display:block}
 </head>
 <body>
 <div id="gc">
+<div id="gtitle"><span class="gname">LOG CHOP</span><span class="glvl" id="hLvl">LEVEL 1</span></div>
 <div id="hud">
   <span>LOGS:<span id="hS">0</span></span>
   <span class="hc">COINS:<span id="hC">15</span></span>
@@ -49,7 +53,7 @@ canvas{image-rendering:pixelated;display:block}
 </div>
 <canvas id="game"></canvas>
 <div id="ins">
-  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack(30+) | <strong>B</strong> buy shed
+  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack(30+)<span id="insShed"></span>
 </div>
 <div id="tc">
   <button class="tb" onclick="doSell()">SELL</button>
@@ -57,7 +61,7 @@ canvas{image-rendering:pixelated;display:block}
   <button class="tb" onclick="upgradeAxe()">AXE</button>
   <button class="tb" onclick="buyCoffee()">COFFEE</button>
   <button class="tb" onclick="buyJerky()">JERKY</button>
-  <button class="tb" id="shedBtn" onclick="buyShed()">🔒 SHED</button>
+  <button class="tb" id="shedBtn" onclick="buyShed()" style="display:none">SHED</button>
   <button class="tb tc2" onclick="doChop()">CHOP</button>
 </div>
 </div>
@@ -205,8 +209,8 @@ function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
   hCo.textContent=COFFEES[coffeeLv].name;hJ.textContent=JERKYS[jerkyLv].name;
   hS.textContent=logsChopped;hSh.textContent=shedCount();
   const sb=document.getElementById('shedBtn');
-  if(axeLv>=AXES.length-1){document.getElementById('hShWrap').style.display='';sb.textContent='SHED';}
-  else{sb.textContent='\u{1F512} SHED';}}
+  const lv=document.getElementById('hLvl');
+  if(axeLv>=AXES.length-1){document.getElementById('hShWrap').style.display='';sb.style.display='';lv.textContent='LEVEL 2';lv.style.color='#ffd700';document.getElementById('insShed').innerHTML=' | <strong>B</strong> buy shed';}}
 
 // ═══ DRAWING ═══
 function gf(s){return s+'px "Press Start 2P"';}
@@ -336,6 +340,9 @@ function drawDryingStacks(){
     X.fillRect(bx2,by2,bw*Math.min(1,st.dryProgress),bh);
     X.strokeStyle='rgba(255,255,255,0.25)';X.lineWidth=0.5;X.strokeRect(bx2,by2,bw,bh);
     oText(sp.abbr,x,by2-3,st.done?'#ffd700':'#ccc',6);
+    // Coin value below stack
+    const val=Math.round(st.pieces*sp.coinsPer);
+    oText(val+'c',x,y+10,st.done?'#ffd700':'#aaa',5);
     if(st.done){const a=0.4+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('DRY!',x,by2-12,'#ffd700',7);X.globalAlpha=1;}
     // Shed icon
     if(hasShed(st.speciesId)){
@@ -534,7 +541,7 @@ function updateMsgs(){floatMsgs.forEach(m=>{m.y-=0.7;m.life-=0.012;});floatMsgs=
 function drawMsgs(){floatMsgs.forEach(m=>{X.globalAlpha=m.life;oText(m.text,m.x,m.y,m.color,12);});X.globalAlpha=1;}
 
 function nearest(){let n=null,d=Infinity;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
-function nearestClose(){let n=null,d=55;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
+function nearestClose(){let n=null,d=60;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d&&dd>l.diam/4){d=dd;n=l;}});return n;}
 
 function drawHint(){if(cutscene)return;const nl=nearestClose();if(nl&&!J.chop&&!J.walk){const a=0.5+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('CHOP',nl.x,355-nl.diam,'#fff',11);X.globalAlpha=1;}}
 
@@ -613,9 +620,15 @@ function updateCS(){
   else if(cs.type==='walkchop'){
     const lg=cs.data.log;
     if(lg.done){cutscene=null;return;}
-    if(cs.phase===0){J.tx=lg.x;J.f=J.x>lg.x?-1:1;if(Math.abs(J.x-lg.x)<40){cs.phase=1;cs.timer=0;}}
+    if(cs.phase===0){
+      // Walk to beside the log, not on top
+      const side=J.x<lg.x?-1:1; // approach from whichever side Jack is on
+      const chopX=lg.x+side*(lg.diam/2+18);
+      J.tx=chopX;J.f=-side; // face toward the log
+      if(Math.abs(J.x-chopX)<8){cs.phase=1;cs.timer=0;}
+    }
     else if(cs.phase===1){J.walk=false;
-      if(cs.timer===1){J.chop=true;J.cp=0;J.f=J.x<lg.x?1:J.x>lg.x?-1:J.f;
+      if(cs.timer===1){J.chop=true;J.cp=0;J.f=J.x<lg.x?1:-1;
         setTimeout(()=>{if(lg.done)return;lg.prog++;spawnChopP(lg.x,lg.y);
           if(lg.prog>=lg.max){lg.done=true;logsChopped++;triggerSplit(lg);updHud();setTimeout(()=>spawnLog(),1200);}
         },350);}
@@ -639,8 +652,11 @@ function updateCS(){
 // ═══ ACTIONS ═══
 function doChop(){
   if(isBusy())return;const nl=nearest();if(!nl)return;
-  if(Math.abs(J.x-nl.x)<55){
-    J.chop=true;J.cp=0;J.f=J.x<nl.x?1:J.x>nl.x?-1:J.f;
+  const dist=Math.abs(J.x-nl.x);
+  const chopDist=nl.diam/2+22;
+  if(dist<chopDist+10){
+    // Already beside it - chop
+    J.chop=true;J.cp=0;J.f=J.x<nl.x?1:-1;
     setTimeout(()=>{nl.prog++;spawnChopP(nl.x,nl.y);
       if(nl.prog>=nl.max){nl.done=true;logsChopped++;triggerSplit(nl);updHud();setTimeout(()=>spawnLog(),1200);}
     },350);
@@ -695,8 +711,12 @@ window.doChop=doChop;window.doStack=doStack;window.doSell=doSell;
 window.upgradeAxe=upgradeAxe;window.buyCoffee=buyCoffee;window.buyJerky=buyJerky;window.buyShed=buyShed;
 
 // ═══ INPUT ═══
-CV.addEventListener('click',e=>{if(isBusy())return;const g=s2g(e.clientX,e.clientY);J.tx=Math.max(20,Math.min(GW-20,g.x));});
-CV.addEventListener('touchstart',e=>{e.preventDefault();if(isBusy())return;const t=e.touches[0];const g=s2g(t.clientX,t.clientY);J.tx=Math.max(20,Math.min(GW-20,g.x));},{passive:false});
+function snapAwayFromLogs(tx){
+  for(const l of logs){if(l.done)continue;const d=Math.abs(tx-l.x);if(d<l.diam/2+8){tx=tx<l.x?l.x-l.diam/2-12:l.x+l.diam/2+12;}}
+  return Math.max(20,Math.min(GW-20,tx));
+}
+CV.addEventListener('click',e=>{if(isBusy())return;const g=s2g(e.clientX,e.clientY);J.tx=snapAwayFromLogs(g.x);});
+CV.addEventListener('touchstart',e=>{e.preventDefault();if(isBusy())return;const t=e.touches[0];const g=s2g(t.clientX,t.clientY);J.tx=snapAwayFromLogs(g.x);},{passive:false});
 document.addEventListener('keydown',e=>{
   if(e.code==='Space'){e.preventDefault();doChop();}
   if(e.code==='KeyS')doStack();if(e.code==='KeyM')doSell();
