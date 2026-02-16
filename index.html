@@ -23,12 +23,12 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;font-family:'Press Start 2P',monospace;user-select:none;-webkit-user-select:none;touch-action:none}
 #gc{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
-#hud{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;color:#e8d5b0;font-size:10px;position:absolute;top:2px;left:0;right:0;text-align:center;z-index:10;padding:2px 6px}
-#hud span{text-shadow:1px 1px 0 #333;white-space:nowrap}
+#hud{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;color:#fff;font-size:10px;position:absolute;top:2px;left:0;right:0;text-align:center;z-index:10;padding:2px 6px}
+#hud span{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,0.5);white-space:nowrap}
 .hc{color:#ffd700!important}.ha{color:#a0c8ff!important}.hl{color:#80e080!important}.hp{color:#ff9966!important}
 canvas{image-rendering:pixelated;display:block}
-#ins{color:#888;text-align:center;line-height:1.8;font-size:8px;position:absolute;bottom:2px;left:0;right:0;z-index:10;padding:0 6px}
-#ins strong{color:#c8a96e}
+#ins{color:#fff;text-align:center;line-height:1.8;font-size:8px;position:absolute;bottom:2px;left:0;right:0;z-index:10;padding:0 6px;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000}
+#ins strong{color:#ffd700}
 #tc{display:none;position:absolute;bottom:6px;right:6px;z-index:20;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:340px}
 .tb{background:rgba(200,169,110,0.3);border:2px solid rgba(200,169,110,0.5);color:#c8a96e;font-family:'Press Start 2P',monospace;border-radius:6px;padding:7px 10px;font-size:9px;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 .tb:active{background:rgba(200,169,110,0.6)}
@@ -43,9 +43,9 @@ canvas{image-rendering:pixelated;display:block}
   <span>LOGS:<span id="hS">0</span></span>
   <span class="hc">COINS:<span id="hC">15</span></span>
   <span class="ha">AXE:<span id="hA">Starter</span></span>
-  <span class="hl">HUSTLE:<span id="hCo">Normal</span></span>
-  <span class="hp">POWER:<span id="hJ">Normal</span></span>
-  <span>SHEDS:<span id="hSh">0</span>/5</span>
+  <span class="hl">COFFEE:<span id="hCo">Normal</span></span>
+  <span class="hp">JERKY:<span id="hJ">Normal</span></span>
+  <span id="hShWrap" style="display:none">SHEDS:<span id="hSh">0</span>/5</span>
 </div>
 <canvas id="game"></canvas>
 <div id="ins">
@@ -65,8 +65,6 @@ canvas{image-rendering:pixelated;display:block}
 <script>
 const CV=document.getElementById('game'),X=CV.getContext('2d');
 const GW=960,GH=560;CV.width=GW;CV.height=GH;
-// Border padding
-const PAD=4;
 
 function resize(){
   const s=Math.min(innerWidth/GW,innerHeight/GH);
@@ -105,18 +103,26 @@ const AXES=[
   {name:'Golden',color:'#ffd700',shine:'#fff4a0',multi:0.35,cost:1200},
 ];
 const COFFEES=[
-  {name:'Normal',speed:1.8,cost:0},
-  {name:'Coffee',speed:2.4,cost:15},
-  {name:'Dbl Shot',speed:3.0,cost:50},
-  {name:'Triple',speed:3.8,cost:150},
-  {name:'Espresso IV',speed:4.8,cost:400},
+  {name:'None',speed:1.8,cost:0},
+  {name:'Drip Coffee',speed:2.2,cost:15},
+  {name:'Pour Over',speed:2.6,cost:45},
+  {name:'French Press',speed:3.0,cost:100},
+  {name:'Moka Pot',speed:3.4,cost:200},
+  {name:'Espresso',speed:3.9,cost:400},
+  {name:'Cold Brew',speed:4.4,cost:750},
+  {name:'Dbl Espresso',speed:5.0,cost:1200},
+  {name:'Quad Espresso',speed:5.8,cost:2000},
 ];
 const JERKYS=[
-  {name:'Normal',cs:0.020,cost:0},
-  {name:'Jerky',cs:0.025,cost:20},
-  {name:'Dbl Jerky',cs:0.031,cost:60},
-  {name:'Smoked',cs:0.039,cost:175},
-  {name:'Brisket',cs:0.050,cost:500},
+  {name:'None',cs:0.020,cost:0},
+  {name:'Beef Jerky',cs:0.023,cost:20},
+  {name:'Elk Jerky',cs:0.027,cost:50},
+  {name:'Peppered',cs:0.031,cost:120},
+  {name:'Smoked',cs:0.035,cost:250},
+  {name:'Teriyaki',cs:0.040,cost:500},
+  {name:'Biltong',cs:0.045,cost:900},
+  {name:'Wagyu Jerky',cs:0.051,cost:1500},
+  {name:'Pemmican',cs:0.058,cost:2500},
 ];
 let axeLv=0,coffeeLv=0,jerkyLv=0;
 
@@ -197,7 +203,8 @@ const hS=document.getElementById('hS'),hSh=document.getElementById('hSh');
 
 function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
   hCo.textContent=COFFEES[coffeeLv].name;hJ.textContent=JERKYS[jerkyLv].name;
-  hS.textContent=logsChopped;hSh.textContent=shedCount();}
+  hS.textContent=logsChopped;hSh.textContent=shedCount();
+  if(axeLv>=AXES.length-1)document.getElementById('hShWrap').style.display='';}
 
 // ═══ DRAWING ═══
 function gf(s){return s+'px "Press Start 2P"';}
@@ -207,19 +214,13 @@ function oText(t,x,y,fill,sz,al){
   X.strokeText(t,x,y);X.fillStyle=fill;X.fillText(t,x,y);
 }
 
-function drawBorder(){
-  X.fillStyle='#2a1a0e';
-  X.fillRect(0,0,GW,PAD);X.fillRect(0,GH-PAD,GW,PAD);
-  X.fillRect(0,0,PAD,GH);X.fillRect(GW-PAD,0,PAD,GH);
-}
-
-function drawSky(){const g=X.createLinearGradient(0,PAD,0,310);g.addColorStop(0,'#5b8fb9');g.addColorStop(1,'#87ceeb');X.fillStyle=g;X.fillRect(PAD,PAD,GW-PAD*2,306);X.fillStyle='#fff4a0';X.beginPath();X.arc(870,55,25,0,Math.PI*2);X.fill();X.fillStyle='#ffd700';X.beginPath();X.arc(870,55,20,0,Math.PI*2);X.fill();}
+function drawSky(){const g=X.createLinearGradient(0,0,0,310);g.addColorStop(0,'#5b8fb9');g.addColorStop(1,'#87ceeb');X.fillStyle=g;X.fillRect(0,0,GW,310);X.fillStyle='#fff4a0';X.beginPath();X.arc(870,55,25,0,Math.PI*2);X.fill();X.fillStyle='#ffd700';X.beginPath();X.arc(870,55,20,0,Math.PI*2);X.fill();}
 
 function drawClouds(t){X.fillStyle='rgba(255,255,255,0.7)';[[100,55,55],[350,35,42],[600,60,50],[800,45,38]].forEach(([bx,by,sz])=>{const cx=(bx+t*0.008)%1000-30;X.beginPath();X.arc(cx,by,sz*0.6,0,Math.PI*2);X.arc(cx+sz*0.4,by-sz*0.2,sz*0.5,0,Math.PI*2);X.arc(cx+sz*0.8,by,sz*0.4,0,Math.PI*2);X.fill();});}
 
-function drawMountains(){X.fillStyle='#3a6b35';X.beginPath();X.moveTo(PAD,290);X.lineTo(120,140);X.lineTo(260,270);X.lineTo(400,130);X.lineTo(540,275);X.lineTo(680,150);X.lineTo(820,260);X.lineTo(920,165);X.lineTo(GW-PAD,280);X.lineTo(GW-PAD,290);X.fill();X.fillStyle='#2d5a27';X.beginPath();X.moveTo(PAD,300);X.lineTo(80,210);X.lineTo(220,290);X.lineTo(440,200);X.lineTo(600,290);X.lineTo(760,210);X.lineTo(900,285);X.lineTo(GW-PAD,240);X.lineTo(GW-PAD,300);X.fill();}
+function drawMountains(){X.fillStyle='#3a6b35';X.beginPath();X.moveTo(0,290);X.lineTo(120,140);X.lineTo(260,270);X.lineTo(400,130);X.lineTo(540,275);X.lineTo(680,150);X.lineTo(820,260);X.lineTo(920,165);X.lineTo(GW,280);X.lineTo(GW,290);X.fill();X.fillStyle='#2d5a27';X.beginPath();X.moveTo(0,300);X.lineTo(80,210);X.lineTo(220,290);X.lineTo(440,200);X.lineTo(600,290);X.lineTo(760,210);X.lineTo(900,285);X.lineTo(GW,240);X.lineTo(GW,300);X.fill();}
 
-function drawGround(){const g=X.createLinearGradient(0,300,0,GH-PAD);g.addColorStop(0,'#5a8f3c');g.addColorStop(0.12,'#4a7a3b');g.addColorStop(1,'#3d6630');X.fillStyle=g;X.fillRect(PAD,300,GW-PAD*2,GH-300-PAD);X.fillStyle='#6b5030';X.beginPath();X.ellipse(420,430,320,40,0,0,Math.PI*2);X.fill();X.fillStyle='#7a5c38';X.beginPath();X.ellipse(420,428,310,35,0,0,Math.PI*2);X.fill();}
+function drawGround(){const g=X.createLinearGradient(0,300,0,GH);g.addColorStop(0,'#5a8f3c');g.addColorStop(0.12,'#4a7a3b');g.addColorStop(1,'#3d6630');X.fillStyle=g;X.fillRect(0,300,GW,GH-300);X.fillStyle='#6b5030';X.beginPath();X.ellipse(420,430,320,40,0,0,Math.PI*2);X.fill();X.fillStyle='#7a5c38';X.beginPath();X.ellipse(420,428,310,35,0,0,Math.PI*2);X.fill();}
 
 function drawBgTrees(){[[15,270,0.65],[55,258,0.8],[850,262,0.75],[910,250,0.9],[940,272,0.6]].forEach(([tx,ty,s])=>{X.fillStyle='#4a2e14';X.fillRect(tx-4*s,ty,8*s,38*s);X.fillStyle='#1e4a14';X.beginPath();X.moveTo(tx,ty-38*s);X.lineTo(tx-22*s,ty+8);X.lineTo(tx+22*s,ty+8);X.fill();X.beginPath();X.moveTo(tx,ty-22*s);X.lineTo(tx-18*s,ty+18);X.lineTo(tx+18*s,ty+18);X.fill();});}
 
@@ -362,6 +363,7 @@ function drawJerkyShop(){
 // ═══ SHED SHOP (near market) ═══
 function getNextShed(){return SHEDS.find(sh=>!shedsBought[sh.speciesId]);}
 function drawShedShop(){
+  if(axeLv<AXES.length-1)return; // Only after golden axe
   const next=getNextShed();if(!next)return;
   const sx=50,sy=460;
   // Small shed icon
@@ -467,7 +469,7 @@ function drawGoldenShimmer(){
   }
   if(goldenShimmer>0.5){
     oText('GOLDEN AXE!',GW/2,180,'#ffd700',22);
-    oText('LEVEL 2 UNLOCKED',GW/2,220,'#fff4a0',14);
+    oText('LEVEL 2 - SHEDS UNLOCKED',GW/2,220,'#fff4a0',12);
   }
 }
 
@@ -641,6 +643,7 @@ function buyJerky(){
 }
 function buyShed(){
   if(isBusy())return;
+  if(axeLv<AXES.length-1){addMsg(50,440,'Need Golden Axe!','#ff6666');return;}
   const next=getNextShed();
   if(!next){addMsg(50,440,'All sheds built!','#c8a96e');return;}
   if(coins<next.cost){addMsg(50,440,'Need '+next.cost+'c','#ff6666');return;}
@@ -690,7 +693,6 @@ function loop(ts){
   drawJack();
   drawP();drawHint();drawMarketMsg();drawMsgs();
   drawGoldenShimmer();
-  drawBorder();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
