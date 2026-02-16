@@ -71,15 +71,15 @@ function s2g(sx,sy){const r=C.getBoundingClientRect();return{x:(sx-r.left)/(r.wi
 // ─── SPECIES ───
 const SPECIES=[
   {id:'alder',name:'Red Alder',abbr:'ALDER',logColor:'#c4a87a',ringColor:'#b8a88a',
-   baseChops:3,btu:19.5,coinsPer:2,dryTime:30,seasonMo:'4-9',color:'#d4b890'},
+   baseChops:3,btu:19.5,coinsPer:2,dryTime:90,seasonMo:'4-9',color:'#d4b890'},
   {id:'fir',name:'Douglas Fir',abbr:'D.FIR',logColor:'#a0522d',ringColor:'#7a3e22',
-   baseChops:4,btu:20.5,coinsPer:2.5,dryTime:40,seasonMo:'6-9',color:'#8B6914'},
+   baseChops:4,btu:20.5,coinsPer:2.5,dryTime:120,seasonMo:'6-9',color:'#8B6914'},
   {id:'maple',name:'Bigleaf Maple',abbr:'MAPLE',logColor:'#c89050',ringColor:'#a07030',
-   baseChops:5,btu:22.7,coinsPer:3,dryTime:50,seasonMo:'6-8',color:'#b87830'},
+   baseChops:5,btu:22.7,coinsPer:3,dryTime:150,seasonMo:'6-8',color:'#b87830'},
   {id:'oak',name:'Oregon White Oak',abbr:'OAK',logColor:'#8B7355',ringColor:'#6b5535',
-   baseChops:7,btu:28.0,coinsPer:4,dryTime:70,seasonMo:'9-12+',color:'#7a6040'},
+   baseChops:7,btu:28.0,coinsPer:4,dryTime:210,seasonMo:'9-12+',color:'#7a6040'},
   {id:'madrone',name:'Pacific Madrone',abbr:'MADRONE',logColor:'#c06040',ringColor:'#a04830',
-   baseChops:9,btu:30.9,coinsPer:5,dryTime:80,seasonMo:'9-12',color:'#d05a3a'},
+   baseChops:9,btu:30.9,coinsPer:5,dryTime:240,seasonMo:'9-12',color:'#d05a3a'},
 ];
 
 // ─── UPGRADES ───
@@ -103,7 +103,7 @@ SPECIES.forEach(s=>freshWood[s.id]=0);
 
 // Drying stacks: [{speciesId, pieces, dryProgress(0-1), dryTime, x, y, slot}]
 let dryingStacks=[];
-const MAX_STACKS_PER=5, STACK_SIZE=50;
+const MAX_STACKS_PER=5, STACK_SIZE=30;
 
 // ─── JACK ───
 const J={x:400,y:380,tx:400,f:1,wt:0,walk:false,chop:false,cp:0,
@@ -156,6 +156,12 @@ function getReadyStack(){
 
 // ─── DRAWING HELPERS ───
 function gf(s){return s+'px "Press Start 2P"';}
+// Outlined text for readability
+function oText(txt,x,y,fill,size,align){
+  X.font=gf(size);X.textAlign=align||'center';
+  X.strokeStyle='rgba(0,0,0,0.7)';X.lineWidth=3;X.lineJoin='round';
+  X.strokeText(txt,x,y);X.fillStyle=fill;X.fillText(txt,x,y);
+}
 
 function drawSky(){const g=X.createLinearGradient(0,0,0,310);g.addColorStop(0,'#5b8fb9');g.addColorStop(1,'#87ceeb');X.fillStyle=g;X.fillRect(0,0,GW,310);X.fillStyle='#fff4a0';X.beginPath();X.arc(870,55,25,0,Math.PI*2);X.fill();X.fillStyle='#ffd700';X.beginPath();X.arc(870,55,20,0,Math.PI*2);X.fill();}
 
@@ -191,10 +197,9 @@ function drawLog(log){
   X.fillRect(bX,bY,bW*pct,bH);
   X.strokeStyle='rgba(255,255,255,0.3)';X.lineWidth=1;X.strokeRect(bX,bY,bW,bH);
   // Hits left
-  X.fillStyle='rgba(255,255,255,0.7)';X.font=gf(7);X.textAlign='center';
-  X.fillText((log.max-log.prog)+'',x,bY-3);
+  oText((log.max-log.prog)+'',x,bY-3,'rgba(255,255,255,0.9)',8);
   // Species label
-  X.fillStyle=sp.color;X.font=gf(5);X.fillText(sp.abbr,x,bY-11);
+  oText(sp.abbr,x,bY-13,sp.color,7);
 }
 
 // ─── FRESH WOOD PILES (below blocks) ───
@@ -202,22 +207,32 @@ function drawFreshPiles(){
   SPECIES.forEach((sp,si)=>{
     const count=freshWood[sp.id];if(!count)return;
     const bx=BLOCK_X[si],by=490;
-    // Small pile
+    // Messy pile of split firewood pieces
     for(let i=0;i<Math.min(count,30);i++){
-      const r=Math.floor(i/6),c=i%6,px=bx-15+c*6,py=by-r*5;
-      X.fillStyle=sp.color;X.fillRect(px-2,py-2,5,4);
+      const r=Math.floor(i/6),c=i%6;
+      const px=bx-16+c*6+(r%2)*3, py=by-r*5;
+      // Bark side
+      X.fillStyle=sp.logColor;
+      X.beginPath();
+      X.moveTo(px,py+4);X.lineTo(px,py);
+      X.quadraticCurveTo(px+2.5,py-1.5,px+5,py);
+      X.lineTo(px+5,py+4);X.closePath();X.fill();
+      // Split face
+      X.fillStyle=sp.color;
+      X.fillRect(px+1,py+1,3,3);
+      // Tiny ring hint
+      X.strokeStyle=sp.ringColor;X.lineWidth=0.3;X.globalAlpha=0.4;
+      X.beginPath();X.arc(px+2.5,py+4,2,Math.PI*1.2,Math.PI*1.8);X.stroke();
+      X.globalAlpha=1;
     }
-    X.fillStyle=sp.color;X.font=gf(6);X.textAlign='center';
-    X.fillText(count+'',bx,by+12);
-    X.fillStyle='#e8d5b0';X.font=gf(5);
-    X.fillText(sp.abbr,bx,by+20);
+    oText(count+'',bx,by+12,sp.color,8);
+    oText(sp.abbr,bx,by+22,'#e8d5b0',7);
     // Stack prompt
     if(count>=STACK_SIZE && !cutscene){
       const stacks=dryingStacks.filter(s=>s.speciesId===sp.id);
       if(stacks.length<MAX_STACKS_PER){
         const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;
-        X.fillStyle='#90ff90';X.font=gf(7);
-        X.fillText('PRESS S',bx,by+32);
+        oText('PRESS S',bx,by+34,'#90ff90',8);
         X.globalAlpha=1;
       }
     }
@@ -229,34 +244,68 @@ function drawDryingStacks(){
   dryingStacks.forEach(st=>{
     const x=st.x,y=st.y;
     const sp=SPECIES.find(s=>s.id===st.speciesId);
-    // Stack of wood (neat rows)
-    for(let r=0;r<5;r++){
-      for(let c=0;c<4;c++){
-        const px=x-8+c*5,py=y-r*4;
-        X.fillStyle=st.done?sp.color:'#'+Math.floor(
-          parseInt(sp.color.slice(1),16)*0.7+0x333333*0.3
-        ).toString(16).padStart(6,'0');
-        X.fillRect(px,py,4,3);
+    const logC=sp.logColor, ringC=sp.ringColor, faceC=sp.color;
+    // When drying, slightly muted; when done, full color
+    const dryMul=st.done?1:0.75;
+
+    // Draw a neat firewood stack: 5 rows of 4 split pieces
+    // Each piece is a small half-round with a flat split face
+    const pw=7,ph=6; // piece width/height
+    const cols=4,rows=5;
+    const stackW=cols*pw, stackH=rows*ph;
+
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const px=x-stackW/2+c*pw;
+        const py=y-r*ph;
+
+        // Bark (outer curved part) - species log color
+        X.fillStyle=logC;
+        X.globalAlpha=dryMul;
+        X.beginPath();
+        X.moveTo(px,py+ph);
+        X.lineTo(px,py);
+        X.quadraticCurveTo(px+pw/2,py-2,px+pw,py);
+        X.lineTo(px+pw,py+ph);
+        X.closePath();
+        X.fill();
+
+        // Split face (flat inner side) - lighter wood grain
+        X.fillStyle=faceC;
+        X.fillRect(px+1,py+1,pw-2,ph-1);
+
+        // Wood grain lines on split face
+        X.strokeStyle=ringC;
+        X.lineWidth=0.5;
+        X.globalAlpha=dryMul*0.5;
+        // A couple of ring arcs
+        X.beginPath();
+        X.arc(px+pw/2,py+ph+2,4,Math.PI*1.15,Math.PI*1.85);
+        X.stroke();
+        X.beginPath();
+        X.arc(px+pw/2,py+ph+4,7,Math.PI*1.2,Math.PI*1.8);
+        X.stroke();
+        X.globalAlpha=1;
       }
     }
+
     // Border glow if done
     if(st.done){
-      X.strokeStyle='#ffd700';X.lineWidth=1;
-      X.strokeRect(x-10,y-20,24,24);
+      X.strokeStyle='#ffd700';X.lineWidth=1.5;
+      X.strokeRect(x-stackW/2-2,y-rows*ph-2,stackW+4,rows*ph+4);
     }
     // Dry progress bar
-    const bw=24,bh=3,bx=x-10,by=y-24;
-    X.fillStyle='rgba(0,0,0,0.4)';X.fillRect(bx,by,bw,bh);
+    const bw=stackW+4,bh=4,bx=x-stackW/2-2,by=y-rows*ph-10;
+    X.fillStyle='rgba(0,0,0,0.5)';X.fillRect(bx,by,bw,bh);
     if(st.done){X.fillStyle='#ffd700';}
     else{X.fillStyle='#66aaff';}
     X.fillRect(bx,by,bw*Math.min(1,st.dryProgress),bh);
-    X.strokeStyle='rgba(255,255,255,0.2)';X.lineWidth=0.5;X.strokeRect(bx,by,bw,bh);
+    X.strokeStyle='rgba(255,255,255,0.25)';X.lineWidth=0.5;X.strokeRect(bx,by,bw,bh);
     // Label
-    X.fillStyle=st.done?'#ffd700':'#aaa';X.font=gf(4);X.textAlign='center';
-    X.fillText(sp.abbr,x+2,by-2);
+    oText(sp.abbr,x,by-3,st.done?'#ffd700':'#ccc',6);
     if(st.done){
       const a=0.4+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;
-      X.fillStyle='#ffd700';X.font=gf(4);X.fillText('DRY!',x+2,by-8);X.globalAlpha=1;
+      oText('DRY!',x,by-12,'#ffd700',7);X.globalAlpha=1;
     }
   });
 }
@@ -268,14 +317,14 @@ function drawMarket(){
   X.fillStyle='#cc3333';X.beginPath();X.moveTo(MX-32,MY-10);X.lineTo(MX+32,MY-10);X.lineTo(MX+28,MY-24);X.lineTo(MX-28,MY-24);X.closePath();X.fill();
   X.fillStyle='#fff';for(let s=-22;s<24;s+=11){X.beginPath();X.moveTo(MX+s,MY-10);X.lineTo(MX+s+5,MY-10);X.lineTo(MX+s+4,MY-24);X.lineTo(MX+s-1,MY-24);X.closePath();X.fill();}
   X.fillStyle='#a08060';X.fillRect(MX-27,MY+6,54,5);
-  X.fillStyle='#fff';X.font=gf(6);X.textAlign='center';X.fillText('MARKET',MX,MY+2);
+  oText('MARKET',MX,MY+2,'#fff',8);
   X.fillStyle='#ffd700';X.beginPath();X.arc(MX,MY-32,7,0,Math.PI*2);X.fill();
-  X.fillStyle='#b8960a';X.font=gf(8);X.fillText('$',MX,MY-29);
+  oText('$',MX,MY-29,'#b8960a',9);
   const ready=getReadyStack();
   if(ready&&!cutscene){
     const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;
-    X.fillStyle='#ffd700';X.font=gf(8);X.fillText('PRESS M',MX,MY-46);
-    X.font=gf(6);X.fillText('SELL DRY!',MX,MY-56);X.globalAlpha=1;
+    oText('PRESS M',MX,MY-46,'#ffd700',9);
+    oText('SELL DRY!',MX,MY-58,'#ffd700',7);X.globalAlpha=1;
   }
 }
 
@@ -289,10 +338,10 @@ function drawAnvil(){
 function drawAxeSign(){
   if(axeLv>=AXES.length-1)return;const n=AXES[axeLv+1],ux=AX_X,uy=AX_Y-48;
   X.fillStyle='#5c3a1e';X.fillRect(ux-3,uy+22,6,26);
-  X.fillStyle='#c8a96e';X.fillRect(ux-38,uy-4,76,28);X.strokeStyle='#5c3a1e';X.lineWidth=2;X.strokeRect(ux-38,uy-4,76,28);
-  X.fillStyle='#3a2510';X.font=gf(6);X.textAlign='center';X.fillText('AXE:'+n.name,ux,uy+8);
-  X.fillStyle='#ffd700';X.fillText(n.cost+' coins',ux,uy+18);
-  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;X.fillStyle='#90ff90';X.font=gf(8);X.fillText('PRESS U',ux,uy-10);X.globalAlpha=1;}
+  X.fillStyle='#c8a96e';X.fillRect(ux-42,uy-4,84,30);X.strokeStyle='#5c3a1e';X.lineWidth=2;X.strokeRect(ux-42,uy-4,84,30);
+  X.fillStyle='#3a2510';X.font=gf(7);X.textAlign='center';X.fillText('AXE:'+n.name,ux,uy+9);
+  X.fillStyle='#ffd700';X.font=gf(7);X.fillText(n.cost+' coins',ux,uy+20);
+  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;oText('PRESS U',ux,uy-10,'#90ff90',9);X.globalAlpha=1;}
 }
 
 // ─── COFFEE ───
@@ -305,9 +354,9 @@ function drawCoffeeShop(){
   X.strokeStyle='#d4d4d4';X.lineWidth=2;X.beginPath();X.arc(CX+6,CY-1,3,-Math.PI/2,Math.PI/2);X.stroke();
   const t=Date.now()*0.003;X.strokeStyle='rgba(255,255,255,0.4)';X.lineWidth=1;
   for(let i=0;i<2;i++){X.beginPath();const sx=CX-2+i*4;X.moveTo(sx,CY-9);X.quadraticCurveTo(sx+Math.sin(t+i)*3,CY-14,sx+Math.sin(t+i+1)*2,CY-19);X.stroke();}
-  X.fillStyle='#80e080';X.font=gf(6);X.textAlign='center';X.fillText(n.name,CX,CY+22);
-  X.fillStyle='#ffd700';X.fillText(n.cost+'c',CX,CY+31);
-  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;X.fillStyle='#80e080';X.font=gf(7);X.fillText('C',CX,CY-16);X.globalAlpha=1;}
+  oText(n.name,CX,CY+22,'#80e080',7);
+  oText(n.cost+'c',CX,CY+32,'#ffd700',7);
+  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;oText('PRESS C',CX,CY-16,'#80e080',8);X.globalAlpha=1;}
 }
 
 // ─── JERKY ───
@@ -315,11 +364,11 @@ const JX=900,JY=420;
 function drawJerkyShop(){
   if(jerkyLv>=JERKYS.length-1)return;const n=JERKYS[jerkyLv+1];
   X.fillStyle='#5c3a1e';X.fillRect(JX-2,JY+12,4,18);X.fillStyle='#a08060';X.fillRect(JX-18,JY+8,36,5);
-  X.fillStyle='#8B4513';X.fillRect(JX-6,JY-10,12,16);X.fillStyle='#a0522d';X.fillRect(JX-6,JY-10,12,3);
-  X.fillStyle='#ffd700';X.font=gf(3);X.textAlign='center';X.fillText('JERKY',JX,JY);
-  X.fillStyle='#ff9966';X.font=gf(6);X.fillText(n.name,JX,JY+22);
-  X.fillStyle='#ffd700';X.fillText(n.cost+'c',JX,JY+31);
-  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;X.fillStyle='#ff9966';X.font=gf(7);X.fillText('J',JX,JY-16);X.globalAlpha=1;}
+  X.fillStyle='#8B4513';X.fillRect(JX-7,JY-12,14,18);X.fillStyle='#a0522d';X.fillRect(JX-7,JY-12,14,4);
+  oText('JERKY',JX,JY+1,'#ffd700',4);
+  oText(n.name,JX,JY+22,'#ff9966',7);
+  oText(n.cost+'c',JX,JY+32,'#ffd700',7);
+  if(coins>=n.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.005)*0.4;X.globalAlpha=a;oText('PRESS J',JX,JY-18,'#ff9966',8);X.globalAlpha=1;}
 }
 
 // ─── LUMBERJACK ───
@@ -397,14 +446,14 @@ function drawP(){[...particles,...bsSparks].forEach(p=>{X.globalAlpha=p.life;X.f
 
 function addMsg(x,y,t,c){floatMsgs.push({x,y,text:t,color:c,life:1});}
 function updateMsgs(){floatMsgs.forEach(m=>{m.y-=0.7;m.life-=0.012;});floatMsgs=floatMsgs.filter(m=>m.life>0);}
-function drawMsgs(){floatMsgs.forEach(m=>{X.globalAlpha=m.life;X.fillStyle=m.color;X.font=gf(11);X.textAlign='center';X.fillText(m.text,m.x,m.y);});X.globalAlpha=1;}
+function drawMsgs(){floatMsgs.forEach(m=>{X.globalAlpha=m.life;oText(m.text,m.x,m.y,m.color,12);});X.globalAlpha=1;}
 
 function nearest(){let n=null,d=Infinity;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
 function nearestClose(){let n=null,d=55;logs.forEach(l=>{if(l.done)return;const dd=Math.abs(J.x-l.x);if(dd<d){d=dd;n=l;}});return n;}
 
-function drawHint(){if(cutscene)return;const nl=nearestClose();if(nl&&!J.chop&&!J.walk){const a=0.5+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;X.fillStyle='#fff';X.font=gf(10);X.textAlign='center';X.fillText('CHOP',nl.x,nl.y-55-nl.diam);X.globalAlpha=1;}}
+function drawHint(){if(cutscene)return;const nl=nearestClose();if(nl&&!J.chop&&!J.walk){const a=0.5+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('CHOP',nl.x,nl.y-55-nl.diam,'#fff',11);X.globalAlpha=1;}}
 
-function drawMarketMsg(){if(!marketMsg)return;marketMsg.timer--;if(marketMsg.timer<=0){marketMsg=null;return;}X.globalAlpha=Math.min(1,marketMsg.timer/30);X.fillStyle=marketMsg.color;X.font=gf(14);X.textAlign='center';X.fillText(marketMsg.text,MX,MY-65-(90-marketMsg.timer)*0.4);X.globalAlpha=1;}
+function drawMarketMsg(){if(!marketMsg)return;marketMsg.timer--;if(marketMsg.timer<=0){marketMsg=null;return;}X.globalAlpha=Math.min(1,marketMsg.timer/30);oText(marketMsg.text,MX,MY-65-(90-marketMsg.timer)*0.4,marketMsg.color,15);X.globalAlpha=1;}
 
 // ─── CUTSCENES ───
 function updateCS(){
@@ -518,7 +567,7 @@ function doStack(){
       if(existing.length<MAX_STACKS_PER){startCS('stack',{speciesIdx:si});return;}
     }
   }
-  addMsg(J.x,J.y-60,'Need 50+ wood!','#ff6666');
+  addMsg(J.x,J.y-60,'Need 30+ wood!','#ff6666');
 }
 
 function doSell(){
