@@ -50,10 +50,11 @@ canvas{image-rendering:pixelated;display:block}
   <span class="hl">ENERGY:<span id="hCo">None</span></span>
   <span class="hp">STRENGTH:<span id="hJ">None</span></span>
   <span id="hShWrap" style="display:none">SHEDS:<span id="hSh">0</span>/5</span>
+  <span id="hEmpWrap" style="display:none">HAND:<span id="hEmp">—</span></span>
 </div>
 <canvas id="game"></canvas>
 <div id="ins">
-  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack(30+)<span id="insShed"></span>
+  <strong>CLICK</strong> walk | <strong>SPACE</strong> chop | <strong>M</strong> sell | <strong>U</strong> axe | <strong>C</strong> coffee | <strong>J</strong> jerky | <strong>S</strong> stack(30+)<span id="insShed"></span><span id="insEmp"></span>
 </div>
 <div id="tc">
   <button class="tb" onclick="doSell()">SELL</button>
@@ -62,6 +63,7 @@ canvas{image-rendering:pixelated;display:block}
   <button class="tb" onclick="buyCoffee()">COFFEE</button>
   <button class="tb" onclick="buyJerky()">JERKY</button>
   <button class="tb" id="shedBtn" onclick="buyShed()" style="display:none">SHED</button>
+  <button class="tb" id="empBtn" onclick="hireOrUpgradeEmp()" style="display:none">HAND</button>
   <button class="tb tc2" onclick="doChop()">CHOP</button>
 </div>
 </div>
@@ -80,10 +82,10 @@ function s2g(sx,sy){const r=CV.getBoundingClientRect();return{x:(sx-r.left)/(r.w
 
 // ═══ SPECIES (weighted spawn: fir>alder>maple>oak>madrone) ═══
 const SPECIES=[
-  {id:'alder',name:'Red Alder',abbr:'ALDER',logColor:'#c4a87a',ringColor:'#b8a88a',
-   baseChops:3,btu:19.5,coinsPer:2,dryTime:120,seasonMo:'4-9',color:'#d4b890',weight:25},
   {id:'fir',name:'Douglas Fir',abbr:'D.FIR',logColor:'#a0522d',ringColor:'#7a3e22',
-   baseChops:4,btu:20.5,coinsPer:2.5,dryTime:180,seasonMo:'6-9',color:'#8B6914',weight:35},
+   baseChops:4,btu:20.5,coinsPer:2,dryTime:120,seasonMo:'6-9',color:'#8B6914',weight:35},
+  {id:'alder',name:'Red Alder',abbr:'ALDER',logColor:'#c4a87a',ringColor:'#b8a88a',
+   baseChops:3,btu:19.5,coinsPer:2.5,dryTime:180,seasonMo:'4-9',color:'#d4b890',weight:25},
   {id:'maple',name:'Bigleaf Maple',abbr:'MAPLE',logColor:'#c89050',ringColor:'#a07030',
    baseChops:5,btu:22.7,coinsPer:3,dryTime:240,seasonMo:'6-8',color:'#b87830',weight:20},
   {id:'oak',name:'Oregon White Oak',abbr:'OAK',logColor:'#8B7355',ringColor:'#6b5535',
@@ -133,8 +135,8 @@ let axeLv=0,coffeeLv=0,jerkyLv=0;
 // ═══ DRYING SHEDS ═══
 // Each shed: 50% faster drying + 3 extra stack slots for that species
 const SHEDS=[
-  {speciesId:'alder',name:'Alder Shed',cost:400},
-  {speciesId:'fir',name:'Fir Shed',cost:700},
+  {speciesId:'fir',name:'Fir Shed',cost:400},
+  {speciesId:'alder',name:'Alder Shed',cost:700},
   {speciesId:'maple',name:'Maple Shed',cost:1100},
   {speciesId:'oak',name:'Oak Shed',cost:1800},
   {speciesId:'madrone',name:'Madrone Shed',cost:2800},
@@ -146,15 +148,44 @@ function maxStacksFor(id){return hasShed(id)?8:5;}
 function dryTimeFor(sp){return hasShed(sp.id)?sp.dryTime*0.5:sp.dryTime;}
 function shedCount(){return Object.values(shedsBought).filter(v=>v).length;}
 
+// ═══ EMPLOYEE ═══
+const EMP_PERKS=[
+  {name:'Hire Hand',spdMul:0.5,cost:2000},
+  {name:'Work Boots',spdMul:0.7,cost:500},
+  {name:'Cargo Pants',spdMul:0.85,cost:1000},
+  {name:'Wheelbarrow',spdMul:1.0,cost:2000},
+  {name:'Pickup Truck',spdMul:1.3,cost:4000},
+  {name:'Foreman',spdMul:1.7,cost:8000},
+];
+let empHired=false,empPerkLv=0;
+const E={x:500,y:380,tx:500,f:-1,wt:0,walk:false,carry:false,cc:0,
+  state:'idle',timer:0,target:null,phase:0};
+function empSpd(){return COFFEES[coffeeLv].speed*EMP_PERKS[empPerkLv].spdMul;}
+function empBusy(){return E.state!=='idle';}
+function nextEmpPerk(){return empPerkLv<EMP_PERKS.length-1?EMP_PERKS[empPerkLv+1]:null;}
+
 // ═══ STATE ═══
 let logsChopped=0,coins=15,gt=0,marketMsg=null,cutscene=null;
-let goldenShimmer=0; // >0 means shimmer active
+let goldenShimmer=0;
+let showIntro=true; // Show "press space" intro
 
 let freshWood={};
 SPECIES.forEach(s=>freshWood[s.id]=0);
+// Tutorial: start with 30 fir on the ground ready to stack
+freshWood['fir']=30;
 
 let dryingStacks=[];
 const STACK_SIZE=30;
+
+// Tutorial: start with 1 drying stack of each non-fir species at various progress
+function initTutorialStacks(){
+  for(let si=1;si<SPECIES.length;si++){
+    const sp=SPECIES[si];
+    const pos=getStackPos(si,0);
+    const prog=[0,0.15,0.05,0.02][si-1]||0;
+    dryingStacks.push({speciesId:sp.id,pieces:STACK_SIZE,dryProgress:prog,dryTime:dryTimeFor(sp),x:pos.x,y:pos.y,slot:0,done:false});
+  }
+}
 
 // ═══ JACK ═══
 const J={x:400,y:380,tx:400,f:1,wt:0,walk:false,chop:false,cp:0,
@@ -196,6 +227,7 @@ function addDryingStack(speciesId){
   return true;
 }
 function getReadyStack(){return dryingStacks.find(s=>s.done);}
+initTutorialStacks(); // Set up tutorial starting state
 
 // ═══ FRESH PILE POSITIONS ═══
 const PILE_X=[96,288,480,672,864];
@@ -209,8 +241,16 @@ function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
   hCo.textContent=COFFEES[coffeeLv].name;hJ.textContent=JERKYS[jerkyLv].name;
   hS.textContent=logsChopped;hSh.textContent=shedCount();
   const sb=document.getElementById('shedBtn');
+  const eb=document.getElementById('empBtn');
   const lv=document.getElementById('hLvl');
-  if(axeLv>=AXES.length-1){document.getElementById('hShWrap').style.display='';sb.style.display='';lv.textContent='LEVEL 2';lv.style.color='#ffd700';document.getElementById('insShed').innerHTML=' | <strong>B</strong> buy shed';}}
+  if(axeLv>=AXES.length-1){
+    document.getElementById('hShWrap').style.display='';sb.style.display='';
+    document.getElementById('hEmpWrap').style.display='';eb.style.display='';
+    lv.textContent='LEVEL 2';lv.style.color='#ffd700';
+    document.getElementById('insShed').innerHTML=' | <strong>B</strong> shed';
+    document.getElementById('insEmp').innerHTML=' | <strong>H</strong> hand';
+    document.getElementById('hEmp').textContent=empHired?EMP_PERKS[empPerkLv].name:'—';
+  }}
 
 // ═══ DRAWING ═══
 function gf(s){return s+'px "Press Start 2P"';}
@@ -318,6 +358,35 @@ function drawFreshPiles(){
 }
 
 // ═══ DRYING STACKS ═══
+// Draw permanent sheds for purchased species (independent of stacks)
+function drawSheds(){
+  SPECIES.forEach((sp,si)=>{
+    if(!hasShed(sp.id))return;
+    // Draw shed at slot 0 position, spanning full max width
+    const pos=getStackPos(si,0);
+    const x=pos.x,y=pos.y;
+    const pw=7,ph=6,cols=4,rows=5,sW=cols*pw;
+    const maxSlots=maxStacksFor(sp.id);
+    const totalW=sW+(maxSlots-1)*STACK_SPC;
+    const cx=x+totalW/2-sW/2; // center of all possible slots
+    const shedW=totalW+16;
+    const shedTop=y-rows*ph-6;
+    // Posts
+    X.fillStyle='#5c3a1e';
+    X.fillRect(cx-shedW/2+2,y-rows*ph,3,rows*ph+2);
+    X.fillRect(cx+shedW/2-5,y-rows*ph,3,rows*ph+2);
+    // Roof beam
+    X.fillStyle='#6b4820';X.fillRect(cx-shedW/2,shedTop,shedW,3);
+    // Peaked roof
+    X.fillStyle='#8B6914';
+    X.beginPath();X.moveTo(cx-shedW/2-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(cx+shedW/2+2,shedTop);X.closePath();X.fill();
+    X.strokeStyle='#5c3a1e';X.lineWidth=1;
+    X.beginPath();X.moveTo(cx-shedW/2-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(cx+shedW/2+2,shedTop);X.stroke();
+    // Label
+    oText(sp.abbr+' SHED',cx,y+12,'#8B6914',5);
+  });
+}
+
 function drawDryingStacks(){
   dryingStacks.forEach(st=>{
     const x=st.x,y=st.y;
@@ -333,7 +402,7 @@ function drawDryingStacks(){
       X.beginPath();X.arc(px+pw/2,py+ph+2,4,Math.PI*1.15,Math.PI*1.85);X.stroke();
       X.globalAlpha=1;
     }}
-    if(st.done){X.strokeStyle='#ffd700';X.lineWidth=1.5;X.strokeRect(x-sW/2-2,y-rows*ph-2,sW+4,rows*ph+4);}
+    // Progress bar
     const bw=sW+4,bh=4,bx2=x-sW/2-2,by2=y-rows*ph-10;
     X.fillStyle='rgba(0,0,0,0.5)';X.fillRect(bx2,by2,bw,bh);
     X.fillStyle=st.done?'#ffd700':'#66aaff';
@@ -343,11 +412,10 @@ function drawDryingStacks(){
     // Coin value below stack
     const val=Math.round(st.pieces*sp.coinsPer);
     oText(val+'c',x,y+10,st.done?'#ffd700':'#aaa',5);
-    if(st.done){const a=0.4+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('DRY!',x,by2-12,'#ffd700',7);X.globalAlpha=1;}
-    // Shed icon
-    if(hasShed(st.speciesId)){
-      X.fillStyle='#5c3a1e';X.fillRect(x-sW/2-4,y-rows*ph-3,sW+8,2);
-      X.beginPath();X.moveTo(x-sW/2-6,y-rows*ph-3);X.lineTo(x,y-rows*ph-10);X.lineTo(x+sW/2+6,y-rows*ph-3);X.closePath();X.fillStyle='#8B6914';X.fill();
+    // Gold border + DRY when done
+    if(st.done){
+      X.strokeStyle='#ffd700';X.lineWidth=1.5;X.strokeRect(x-sW/2-2,y-rows*ph-2,sW+4,rows*ph+4);
+      const a=0.4+Math.sin(Date.now()*0.005)*0.3;X.globalAlpha=a;oText('DRY!',x,by2-12,'#ffd700',7);X.globalAlpha=1;
     }
   });
 }
@@ -665,15 +733,17 @@ function doChop(){
 
 function doStack(){
   if(isBusy())return;
+  let anyFull=false;
   for(let si=0;si<SPECIES.length;si++){
     const sp=SPECIES[si];
     if(freshWood[sp.id]>=STACK_SIZE){
       const existing=dryingStacks.filter(s=>s.speciesId===sp.id);
       if(existing.length<maxStacksFor(sp.id)){startCS('stack',{speciesIdx:si});return;}
-      else{addMsg(J.x,J.y-60,'No room for '+sp.abbr+'!','#ff6666');return;}
+      else{anyFull=true;continue;}
     }
   }
-  addMsg(J.x,J.y-60,'Need 30+ wood!','#ff6666');
+  if(anyFull)addMsg(J.x,J.y-60,'Stacks full!','#ff6666');
+  else addMsg(J.x,J.y-60,'Need 30+ wood!','#ff6666');
 }
 
 function doSell(){
@@ -710,18 +780,191 @@ function buyShed(){
 window.doChop=doChop;window.doStack=doStack;window.doSell=doSell;
 window.upgradeAxe=upgradeAxe;window.buyCoffee=buyCoffee;window.buyJerky=buyJerky;window.buyShed=buyShed;
 
+function hireOrUpgradeEmp(){
+  if(isBusy())return;
+  if(axeLv<AXES.length-1){addMsg(GW/2,300,'Need Golden Axe!','#ff6666');return;}
+  if(!empHired){
+    if(coins<EMP_PERKS[0].cost){addMsg(GW/2,300,'Need '+EMP_PERKS[0].cost+'c','#ff6666');return;}
+    coins-=EMP_PERKS[0].cost;empHired=true;E.x=J.x+40;E.tx=E.x;
+    addMsg(GW/2,280,'HAND HIRED!','#80e080');updHud();return;
+  }
+  const next=nextEmpPerk();
+  if(!next){addMsg(GW/2,300,'MAX PERKS!','#ffd700');return;}
+  if(coins<next.cost){addMsg(GW/2,300,'Need '+next.cost+'c','#ff6666');return;}
+  coins-=next.cost;empPerkLv++;
+  addMsg(GW/2,280,next.name+'!','#80e080');updHud();
+}
+window.hireOrUpgradeEmp=hireOrUpgradeEmp;
+
+// ═══ EMPLOYEE SHOP ═══
+function drawEmpShop(){
+  if(axeLv<AXES.length-1)return;
+  const sx=50,sy=500;
+  if(!empHired){
+    // Show hire option
+    X.fillStyle='#2d5a27';X.fillRect(sx-14,sy-10,28,20);
+    oText('HIRE',sx,sy+3,'#80e080',5);
+    oText('HAND',sx,sy+14,'#80e080',5);
+    oText(EMP_PERKS[0].cost+'c',sx,sy+24,'#ffd700',5);
+    if(coins>=EMP_PERKS[0].cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS H',sx,sy-18,'#80e080',7);X.globalAlpha=1;}
+  } else {
+    const next=nextEmpPerk();
+    if(!next)return;
+    X.fillStyle='#2d5a27';X.fillRect(sx-14,sy-10,28,20);
+    oText('PERK',sx,sy+3,'#80e080',5);
+    oText(next.name,sx,sy+14,'#80e080',5);
+    oText(next.cost+'c',sx,sy+24,'#ffd700',5);
+    if(coins>=next.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS H',sx,sy-18,'#80e080',7);X.globalAlpha=1;}
+  }
+}
+
+// ═══ EMPLOYEE AI ═══
+function updateEmployee(dt){
+  if(!empHired)return;
+  const es=empSpd();
+
+  if(E.state==='idle'){
+    E.timer+=dt;
+    // Check priorities: 1) sell dry stack, 2) stack 30+ wood
+    const rdy=getReadyStack();
+    if(rdy){E.state='selling';E.target=rdy;E.phase=0;E.timer=0;return;}
+    // Find stackable species
+    for(let si=0;si<SPECIES.length;si++){
+      const sp=SPECIES[si];
+      if(freshWood[sp.id]>=STACK_SIZE){
+        const existing=dryingStacks.filter(s=>s.speciesId===sp.id);
+        if(existing.length<maxStacksFor(sp.id)){E.state='stacking';E.target={speciesIdx:si};E.phase=0;E.timer=0;return;}
+      }
+    }
+    // Idle wander near center
+    if(E.timer>2){E.tx=300+Math.random()*360;E.timer=0;}
+  }
+  else if(E.state==='selling'){
+    const st=E.target;
+    if(!st||!dryingStacks.includes(st)){E.state='idle';E.carry=false;E.timer=0;return;}
+    if(E.phase===0){// Walk to stack
+      E.tx=st.x;E.f=E.x>st.x?-1:1;
+      if(Math.abs(E.x-st.x)<10){E.phase=1;E.timer=0;}
+    } else if(E.phase===1){// Pick up
+      E.walk=false;E.timer+=dt;
+      if(E.timer>0.4){E.carry=true;E.cc=3;E.phase=2;E.timer=0;}
+    } else if(E.phase===2){// Walk to market
+      E.tx=MX;E.f=-1;
+      if(Math.abs(E.x-MX)<10){E.phase=3;E.timer=0;}
+    } else if(E.phase===3){// Sell
+      E.walk=false;E.carry=false;E.timer+=dt;
+      if(E.timer>0.3){
+        if(dryingStacks.includes(st)){
+          const sp=SPECIES.find(s=>s.id===st.speciesId);
+          const earned=Math.round(st.pieces*sp.coinsPer);
+          coins+=earned;
+          dryingStacks=dryingStacks.filter(s=>s!==st);
+          const rem=dryingStacks.filter(s=>s.speciesId===st.speciesId);
+          const si=SPECIES.findIndex(s=>s.id===st.speciesId);
+          rem.forEach((s,i)=>{const p=getStackPos(si,i);s.x=p.x;s.y=p.y;s.slot=i;});
+          addMsg(MX,MY-80,'+'+earned+'c','#ffd700');
+          spawnCoinP(MX,MY-20,8);
+          marketMsg={text:'SOLD '+sp.abbr+'!',timer:90,color:'#ffd700'};
+          updHud();
+        }
+        E.state='idle';E.timer=0;
+      }
+    }
+  }
+  else if(E.state==='stacking'){
+    const si=E.target.speciesIdx;const sp=SPECIES[si];
+    if(freshWood[sp.id]<STACK_SIZE){E.state='idle';E.carry=false;E.timer=0;return;}
+    const bx=PILE_X[si];
+    if(E.phase===0){// Walk to pile
+      E.tx=bx;E.f=E.x>bx?-1:1;
+      if(Math.abs(E.x-bx)<10){E.phase=1;E.timer=0;}
+    } else if(E.phase===1){// Pick up
+      E.walk=false;E.timer+=dt;
+      if(E.timer>0.4){E.carry=true;E.cc=4;E.phase=2;E.timer=0;}
+    } else if(E.phase===2){// Walk to drying area
+      const existing=dryingStacks.filter(s=>s.speciesId===sp.id);
+      if(existing.length>=maxStacksFor(sp.id)){E.state='idle';E.carry=false;E.timer=0;return;}
+      const pos=getStackPos(si,existing.length);
+      E.tx=pos.x;E.f=E.x>pos.x?-1:1;
+      if(Math.abs(E.x-pos.x)<10){E.phase=3;E.timer=0;}
+    } else if(E.phase===3){// Place
+      E.walk=false;E.carry=false;E.timer+=dt;
+      if(E.timer>0.3){
+        if(freshWood[sp.id]>=STACK_SIZE){
+          addDryingStack(sp.id);
+          addMsg(E.x,E.y-80,'STACKED!','#90ff90');
+        }
+        E.state='idle';E.timer=0;
+      }
+    }
+  }
+
+  // Move employee
+  const edx=E.tx-E.x;
+  if(Math.abs(edx)>3){E.walk=true;E.x+=Math.sign(edx)*es;E.f=edx>0?1:-1;E.wt++;}
+  else{E.walk=false;}
+}
+
+// ═══ DRAW EMPLOYEE ═══
+function drawEmployee(){
+  if(!empHired)return;
+  let x=E.x,y=E.y;const f=E.f;
+  y+=E.walk?Math.sin(E.wt*0.3)*2:0;
+  X.save();X.translate(x,y);X.scale(f,1);
+  const ls=E.walk?Math.sin(E.wt*0.3)*8:0;
+  // Legs
+  X.fillStyle='#3a5fad';X.save();X.translate(-4,0);X.rotate(ls*Math.PI/180);X.fillRect(-4,0,8,18);X.fillStyle='#4a3020';X.fillRect(-4,16,10,5);X.restore();
+  X.save();X.translate(4,0);X.rotate(-ls*Math.PI/180);X.fillStyle='#3a5fad';X.fillRect(-4,0,8,18);X.fillStyle='#4a3020';X.fillRect(-5,16,10,5);X.restore();
+  // Body - GREEN flannel
+  X.fillStyle='#2d7a27';X.fillRect(-10,-24,20,26);X.strokeStyle='#1a5a14';X.lineWidth=2;for(let ly=-22;ly<2;ly+=6){X.beginPath();X.moveTo(-10,ly);X.lineTo(10,ly);X.stroke();}X.lineWidth=1;X.beginPath();X.moveTo(0,-24);X.lineTo(0,2);X.stroke();
+  // Suspenders
+  X.fillStyle='#5a3a1e';X.fillRect(-7,-22,3,44);X.fillRect(4,-22,3,44);
+  X.fillStyle='#d4a030';X.beginPath();X.arc(-5.5,-4,1.5,0,Math.PI*2);X.fill();X.beginPath();X.arc(5.5,-4,1.5,0,Math.PI*2);X.fill();
+  // Arms
+  const armSwing=E.walk?Math.sin(E.wt*0.3)*15*Math.PI/180:0;
+  X.fillStyle='#2d7a27';X.save();X.translate(-10,-20);X.rotate(armSwing);X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);X.restore();
+  // Carrying
+  if(E.carry){X.save();X.translate(0,-30);for(let i=0;i<Math.min(E.cc,5);i++){X.fillStyle=i%2===0?'#8B6914':'#a0522d';X.fillRect(-8+i*3,-6-i*4,10,7);X.fillStyle='#d4b86a';X.beginPath();X.ellipse(-3+i*3,-3-i*4,4,3,0,0,Math.PI*2);X.fill();}X.restore();}
+  // Front arm
+  X.save();X.translate(8,-22);X.rotate(-armSwing);X.fillStyle='#2d7a27';X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);X.restore();
+  // Head
+  X.fillStyle='#e8b88a';X.fillRect(-8,-38,16,14);X.fillStyle='#2a2a2a';X.fillRect(-5,-34,3,3);X.fillRect(3,-34,3,3);
+  X.fillStyle='#a06040';X.fillRect(-3,-27,6,2);
+  X.fillStyle='#5a3a1e';X.fillRect(-7,-26,14,4);X.fillRect(-5,-22,10,2);
+  // Green beanie
+  X.fillStyle='#228822';X.beginPath();X.ellipse(0,-40,10,5,0,Math.PI,0);X.fill();X.fillRect(-10,-42,20,4);X.fillStyle='#186818';X.fillRect(-10,-40,20,3);X.fillStyle='#228822';X.beginPath();X.arc(0,-45,4,0,Math.PI*2);X.fill();
+  X.restore();
+  // Name tag
+  oText('HAND',x,y-52,'#80e080',5);
+  // Speed lines
+  if(E.walk){X.strokeStyle='rgba(100,255,100,0.2)';X.lineWidth=1;const d=-E.f;for(let i=0;i<2;i++){const ly=E.y-20+i*12,lx=E.x+d*15;X.beginPath();X.moveTo(lx,ly);X.lineTo(lx+d*15,ly);X.stroke();}}
+}
+
+// ═══ INTRO OVERLAY ═══
+function drawIntro(){
+  if(!showIntro)return;
+  const a=0.5+Math.sin(Date.now()*0.004)*0.3;
+  X.globalAlpha=a;
+  oText('PRESS SPACE TO CHOP',GW/2,GH/2-20,'#fff',16);
+  X.globalAlpha=0.6;
+  oText('S to stack | M to sell',GW/2,GH/2+15,'#c8a96e',9);
+  X.globalAlpha=1;
+}
+
 // ═══ INPUT ═══
 function snapAwayFromLogs(tx){
   for(const l of logs){if(l.done)continue;const d=Math.abs(tx-l.x);if(d<l.diam/2+8){tx=tx<l.x?l.x-l.diam/2-12:l.x+l.diam/2+12;}}
   return Math.max(20,Math.min(GW-20,tx));
 }
-CV.addEventListener('click',e=>{if(isBusy())return;const g=s2g(e.clientX,e.clientY);J.tx=snapAwayFromLogs(g.x);});
-CV.addEventListener('touchstart',e=>{e.preventDefault();if(isBusy())return;const t=e.touches[0];const g=s2g(t.clientX,t.clientY);J.tx=snapAwayFromLogs(g.x);},{passive:false});
+CV.addEventListener('click',e=>{if(isBusy())return;showIntro=false;const g=s2g(e.clientX,e.clientY);J.tx=snapAwayFromLogs(g.x);});
+CV.addEventListener('touchstart',e=>{e.preventDefault();if(isBusy())return;showIntro=false;const t=e.touches[0];const g=s2g(t.clientX,t.clientY);J.tx=snapAwayFromLogs(g.x);},{passive:false});
 document.addEventListener('keydown',e=>{
+  showIntro=false;
   if(e.code==='Space'){e.preventDefault();doChop();}
   if(e.code==='KeyS')doStack();if(e.code==='KeyM')doSell();
   if(e.code==='KeyU')upgradeAxe();if(e.code==='KeyC')buyCoffee();
   if(e.code==='KeyJ')buyJerky();if(e.code==='KeyB')buyShed();
+  if(e.code==='KeyH')hireOrUpgradeEmp();
 });
 
 // ═══ UPDATE DRYING ═══
@@ -743,17 +986,20 @@ function loop(ts){
   if(J.chop){J.cp+=cspd();if(J.cp>=1){J.chop=false;J.cp=0;}}
 
   updateCS();updateP();updateSplits();updateMsgs();updateDrying(dt);
+  updateEmployee(dt);
 
   X.clearRect(0,0,GW,GH);
   drawSky();drawClouds(ts);drawMountains();drawBgTrees();drawGround();
-  drawDryingStacks();
-  drawMarket();drawShedShop();drawAnvil();drawAxeSign();drawCoffeeShop();drawJerkyShop();
+  drawSheds();drawDryingStacks();
+  drawMarket();drawShedShop();drawEmpShop();drawAnvil();drawAxeSign();drawCoffeeShop();drawJerkyShop();
   BLOCK_X.forEach(bx=>drawBlock(bx,420));
   logs.forEach(l=>drawLog(l));
   drawSplits();drawFreshPiles();
+  drawEmployee();
   drawJack();
   drawP();drawHint();drawMarketMsg();drawMsgs();
   drawGoldenShimmer();
+  drawIntro();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
