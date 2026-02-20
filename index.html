@@ -133,7 +133,7 @@ const JERKYS=[
 let axeLv=0,coffeeLv=0,jerkyLv=0;
 
 // ═══ DRYING SHEDS ═══
-// Each shed: 50% faster drying + 3 extra stack slots for that species
+// Each shed: 50% faster drying for that species
 const SHEDS=[
   {speciesId:'fir',name:'Fir Shed',cost:400},
   {speciesId:'alder',name:'Alder Shed',cost:700},
@@ -141,28 +141,94 @@ const SHEDS=[
   {speciesId:'oak',name:'Oak Shed',cost:1800},
   {speciesId:'madrone',name:'Madrone Shed',cost:2800},
 ];
-let shedsBought={}; // {alder:true, fir:true, ...}
+let shedsBought={};
 SPECIES.forEach(s=>shedsBought[s.id]=false);
 function hasShed(id){return shedsBought[id]===true;}
-function maxStacksFor(id){return hasShed(id)?8:5;}
-function dryTimeFor(sp){return hasShed(sp.id)?sp.dryTime*0.5:sp.dryTime;}
+function allShedsBought(){return SPECIES.every(s=>shedsBought[s.id]);}
+
+// ═══ DRY KILNS (per species, unlock after all sheds) ═══
+let kilnsBought={};
+SPECIES.forEach(s=>kilnsBought[s.id]=false);
+const KILNS=[
+  {speciesId:'fir',name:'Fir Kiln',cost:800},
+  {speciesId:'alder',name:'Alder Kiln',cost:1200},
+  {speciesId:'maple',name:'Maple Kiln',cost:1800},
+  {speciesId:'oak',name:'Oak Kiln',cost:2500},
+  {speciesId:'madrone',name:'Madrone Kiln',cost:3500},
+];
+function hasKiln(id){return kilnsBought[id]===true;}
+function allKilnsBought(){return SPECIES.every(s=>kilnsBought[s.id]);}
+function getNextKiln(){return KILNS.find(k=>!kilnsBought[k.speciesId]);}
+function kilnCount(){return Object.values(kilnsBought).filter(v=>v).length;}
+
+function maxStacksFor(id){return hasKiln(id)?10:5;}
+function dryTimeFor(sp){
+  let t=sp.dryTime;
+  if(hasShed(sp.id))t*=0.5;
+  if(hasKiln(sp.id))t*=0.5;
+  return t;
+}
 function shedCount(){return Object.values(shedsBought).filter(v=>v).length;}
 
 // ═══ EMPLOYEE ═══
 const EMP_PERKS=[
   {name:'Hire Hand',spdMul:0.5,cost:2000},
-  {name:'Work Boots',spdMul:0.7,cost:500},
-  {name:'Cargo Pants',spdMul:0.85,cost:1000},
-  {name:'Wheelbarrow',spdMul:1.0,cost:2000},
-  {name:'Pickup Truck',spdMul:1.3,cost:4000},
-  {name:'Foreman',spdMul:1.7,cost:8000},
+  {name:'Novice',spdMul:0.65,cost:400},
+  {name:'Rookie',spdMul:0.8,cost:800},
+  {name:'Skilled',spdMul:1.0,cost:1500},
+  {name:'Veteran',spdMul:1.25,cost:2500},
+  {name:'Expert',spdMul:1.5,cost:4000},
+  {name:'Foreman',spdMul:1.8,cost:6000},
 ];
-let empHired=false,empPerkLv=0;
+const EMP_AXES=[
+  {name:'No Axe',multi:0,cost:0},
+  {name:'Starter Axe',multi:1,cost:250},
+  {name:'Steel Axe',multi:0.8,cost:600},
+  {name:'Hardened Axe',multi:0.65,cost:1200},
+  {name:'Mythril Axe',multi:0.5,cost:2500},
+];
+let empHired=false,empPerkLv=0,empAxeLv=0;
 const E={x:500,y:380,tx:500,f:-1,wt:0,walk:false,carry:false,cc:0,
-  state:'idle',timer:0,target:null,phase:0};
+  state:'idle',timer:0,target:null,phase:0,chop:false,cp:0,hasAxe:false};
 function empSpd(){return COFFEES[coffeeLv].speed*EMP_PERKS[empPerkLv].spdMul;}
 function empBusy(){return E.state!=='idle';}
 function nextEmpPerk(){return empPerkLv<EMP_PERKS.length-1?EMP_PERKS[empPerkLv+1]:null;}
+function nextEmpAxe(){return empAxeLv<EMP_AXES.length-1?EMP_AXES[empAxeLv+1]:null;}
+function empMaxChops(sp){return empAxeLv>0?Math.max(1,Math.round(sp.baseChops*EMP_AXES[empAxeLv].multi)):0;}
+
+// ═══ SAVE / LOAD ═══
+function saveGame(){
+  const data={
+    v:3,logsChopped,coins,axeLv,coffeeLv,jerkyLv,
+    shedsBought,kilnsBought,empHired,empPerkLv,empAxeLv,empX:E.x,
+    freshWood,
+    dryingStacks:dryingStacks.map(s=>({speciesId:s.speciesId,pieces:s.pieces,dryProgress:s.dryProgress,dryTime:s.dryTime,x:s.x,y:s.y,slot:s.slot,done:s.done})),
+    goldenShimmer,showIntro
+  };
+  try{localStorage.setItem('logchop_save',JSON.stringify(data));}catch(e){}
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem('logchop_save');
+    if(!raw)return false;
+    const d=JSON.parse(raw);
+    if(!d.v||d.v<3)return false;
+    logsChopped=d.logsChopped||0;coins=d.coins||15;
+    axeLv=d.axeLv||0;coffeeLv=d.coffeeLv||0;jerkyLv=d.jerkyLv||0;
+    if(d.shedsBought)Object.keys(d.shedsBought).forEach(k=>shedsBought[k]=d.shedsBought[k]);
+    if(d.kilnsBought)Object.keys(d.kilnsBought).forEach(k=>kilnsBought[k]=d.kilnsBought[k]);
+    empHired=d.empHired||false;empPerkLv=d.empPerkLv||0;empAxeLv=d.empAxeLv||0;
+    if(d.empX){E.x=d.empX;E.tx=d.empX;}
+    E.hasAxe=empAxeLv>0;
+    if(d.freshWood)Object.keys(d.freshWood).forEach(k=>freshWood[k]=d.freshWood[k]);
+    if(d.dryingStacks)dryingStacks=d.dryingStacks;
+    goldenShimmer=d.goldenShimmer||0;
+    showIntro=d.showIntro!==undefined?d.showIntro:false;
+    return true;
+  }catch(e){return false;}
+}
+setInterval(saveGame,5000);
+
 
 // ═══ STATE ═══
 let logsChopped=0,coins=15,gt=0,marketMsg=null,cutscene=null;
@@ -206,15 +272,15 @@ function spawnLog(){
   const sp=pickSpecies();
   logs.push({x,y:410,sp,done:false,prog:0,max:maxChops(sp),diam:28+Math.random()*18});
 }
-for(let i=0;i<5;i++)spawnLog();
 setInterval(()=>{logs=logs.filter(l=>!l.done);},5000);
 
 function isBusy(){return cutscene||J.chop;}
 function startCS(t,d){cutscene={type:t,phase:0,timer:0,data:d||{}};}
 
 // ═══ DRYING STACK LAYOUT ═══
-const STACK_BASE_Y=305,STACK_SPC=34;
-function getStackPos(si,slot){return{x:55+si*175+slot*STACK_SPC,y:STACK_BASE_Y};}
+const STACK_BASE_Y=305;
+function stackSpc(id){return hasKiln(id)?16:34;}
+function getStackPos(si,slot){const sp=SPECIES[si];return{x:55+si*175+slot*stackSpc(sp.id),y:STACK_BASE_Y};}
 
 function addDryingStack(speciesId){
   const si=SPECIES.findIndex(s=>s.id===speciesId);
@@ -227,7 +293,13 @@ function addDryingStack(speciesId){
   return true;
 }
 function getReadyStack(){return dryingStacks.find(s=>s.done);}
-initTutorialStacks(); // Set up tutorial starting state
+
+// Load saved game or init tutorial
+if(!loadGame()){
+  initTutorialStacks();
+}
+for(let i=0;i<5;i++){if(logs.length<5)spawnLog();}
+updHud();
 
 // ═══ FRESH PILE POSITIONS ═══
 const PILE_X=[96,288,480,672,864];
@@ -239,7 +311,8 @@ const hS=document.getElementById('hS'),hSh=document.getElementById('hSh');
 
 function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
   hCo.textContent=COFFEES[coffeeLv].name;hJ.textContent=JERKYS[jerkyLv].name;
-  hS.textContent=logsChopped;hSh.textContent=shedCount();
+  hS.textContent=logsChopped;
+  hSh.textContent=allShedsBought()?(kilnCount()+'/5 KILNS'):shedCount()+'/5';
   const sb=document.getElementById('shedBtn');
   const eb=document.getElementById('empBtn');
   const lv=document.getElementById('hLvl');
@@ -248,8 +321,10 @@ function updHud(){hC.textContent=coins;hA.textContent=AXES[axeLv].name;
     document.getElementById('hEmpWrap').style.display='';eb.style.display='';
     lv.textContent='LEVEL 2';lv.style.color='#ffd700';
     document.getElementById('insShed').innerHTML=' | <strong>B</strong> shed';
-    document.getElementById('insEmp').innerHTML=' | <strong>H</strong> hand';
-    document.getElementById('hEmp').textContent=empHired?EMP_PERKS[empPerkLv].name:'—';
+    document.getElementById('insEmp').innerHTML=' | <strong>H</strong> hand | <strong>G</strong> hand axe';
+    let empStatus=empHired?EMP_PERKS[empPerkLv].name:'—';
+    if(empHired&&empAxeLv>0)empStatus+=' +'+EMP_AXES[empAxeLv].name;
+    document.getElementById('hEmp').textContent=empStatus;
   }}
 
 // ═══ DRAWING ═══
@@ -362,28 +437,25 @@ function drawFreshPiles(){
 function drawSheds(){
   SPECIES.forEach((sp,si)=>{
     if(!hasShed(sp.id))return;
-    // Draw shed at slot 0 position, spanning full max width
-    const pos=getStackPos(si,0);
-    const x=pos.x,y=pos.y;
-    const pw=7,ph=6,cols=4,rows=5,sW=cols*pw;
+    const pos0=getStackPos(si,0);
     const maxSlots=maxStacksFor(sp.id);
-    const totalW=sW+(maxSlots-1)*STACK_SPC;
-    const cx=x+totalW/2-sW/2; // center of all possible slots
-    const shedW=totalW+16;
+    const posLast=getStackPos(si,maxSlots-1);
+    const y=pos0.y;
+    const pw=7,ph=6,cols=4,rows=5,sW=cols*pw;
+    const leftX=pos0.x-sW/2-4;
+    const rightX=posLast.x+sW/2+4;
+    const cx=(leftX+rightX)/2;
+    const shedW=rightX-leftX;
     const shedTop=y-rows*ph-6;
-    // Posts
     X.fillStyle='#5c3a1e';
-    X.fillRect(cx-shedW/2+2,y-rows*ph,3,rows*ph+2);
-    X.fillRect(cx+shedW/2-5,y-rows*ph,3,rows*ph+2);
-    // Roof beam
-    X.fillStyle='#6b4820';X.fillRect(cx-shedW/2,shedTop,shedW,3);
-    // Peaked roof
+    X.fillRect(leftX,y-rows*ph,3,rows*ph+2);
+    X.fillRect(rightX-3,y-rows*ph,3,rows*ph+2);
+    X.fillStyle='#6b4820';X.fillRect(leftX,shedTop,shedW,3);
     X.fillStyle='#8B6914';
-    X.beginPath();X.moveTo(cx-shedW/2-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(cx+shedW/2+2,shedTop);X.closePath();X.fill();
+    X.beginPath();X.moveTo(leftX-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(rightX+2,shedTop);X.closePath();X.fill();
     X.strokeStyle='#5c3a1e';X.lineWidth=1;
-    X.beginPath();X.moveTo(cx-shedW/2-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(cx+shedW/2+2,shedTop);X.stroke();
-    // Label
-    oText(sp.abbr+' SHED',cx,y+12,'#8B6914',5);
+    X.beginPath();X.moveTo(leftX-2,shedTop);X.lineTo(cx,shedTop-10);X.lineTo(rightX+2,shedTop);X.stroke();
+    oText(sp.abbr+(hasKiln(sp.id)?' KILN':' SHED'),cx,y+12,'#8B6914',5);
   });
 }
 
@@ -479,15 +551,26 @@ function drawJerkyShop(){
 // ═══ SHED SHOP (near market) ═══
 function getNextShed(){return SHEDS.find(sh=>!shedsBought[sh.speciesId]);}
 function drawShedShop(){
-  if(axeLv<AXES.length-1)return; // Only after golden axe
-  const next=getNextShed();if(!next)return;
+  if(axeLv<AXES.length-1)return;
   const sx=50,sy=460;
-  // Small shed icon
-  X.fillStyle='#5c3a1e';X.fillRect(sx-12,sy-8,24,16);
-  X.fillStyle='#8B6914';X.beginPath();X.moveTo(sx-16,sy-8);X.lineTo(sx,sy-20);X.lineTo(sx+16,sy-8);X.closePath();X.fill();
-  oText(next.name,sx,sy+16,'#c8a96e',6);
-  oText(next.cost+'c',sx,sy+26,'#ffd700',6);
-  if(coins>=next.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS B',sx,sy-28,'#c8a96e',8);X.globalAlpha=1;}
+  const next=getNextShed();
+  if(next){
+    X.fillStyle='#5c3a1e';X.fillRect(sx-12,sy-8,24,16);
+    X.fillStyle='#8B6914';X.beginPath();X.moveTo(sx-16,sy-8);X.lineTo(sx,sy-20);X.lineTo(sx+16,sy-8);X.closePath();X.fill();
+    oText(next.name,sx,sy+16,'#c8a96e',6);
+    oText(next.cost+'c',sx,sy+26,'#ffd700',6);
+    if(coins>=next.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS B',sx,sy-28,'#c8a96e',8);X.globalAlpha=1;}
+  } else {
+    // All sheds bought - show next kiln
+    const nextK=getNextKiln();
+    if(nextK){
+      X.fillStyle='#8B3010';X.fillRect(sx-14,sy-10,28,20);
+      X.fillStyle='#ff4420';X.fillRect(sx-10,sy-6,20,4);
+      oText(nextK.name,sx,sy+16,'#ff6633',6);
+      oText(nextK.cost+'c',sx,sy+26,'#ffd700',6);
+      if(coins>=nextK.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS B',sx,sy-28,'#ff6633',8);X.globalAlpha=1;}
+    }
+  }
 }
 
 // ═══ LUMBERJACK ═══
@@ -733,14 +816,20 @@ function doChop(){
 
 function doStack(){
   if(isBusy())return;
+  // Find all stackable species, sort by proximity to Jack
+  let candidates=[];
   let anyFull=false;
   for(let si=0;si<SPECIES.length;si++){
     const sp=SPECIES[si];
     if(freshWood[sp.id]>=STACK_SIZE){
       const existing=dryingStacks.filter(s=>s.speciesId===sp.id);
-      if(existing.length<maxStacksFor(sp.id)){startCS('stack',{speciesIdx:si});return;}
-      else{anyFull=true;continue;}
+      if(existing.length<maxStacksFor(sp.id)){candidates.push({si,dist:Math.abs(J.x-PILE_X[si])});}
+      else{anyFull=true;}
     }
+  }
+  if(candidates.length){
+    candidates.sort((a,b)=>a.dist-b.dist);
+    startCS('stack',{speciesIdx:candidates[0].si});return;
   }
   if(anyFull)addMsg(J.x,J.y-60,'Stacks full!','#ff6666');
   else addMsg(J.x,J.y-60,'Need 30+ wood!','#ff6666');
@@ -748,9 +837,11 @@ function doStack(){
 
 function doSell(){
   if(isBusy())return;
-  const rdy=getReadyStack();
-  if(!rdy){addMsg(MX,MY-50,'No dry wood!','#ff6666');return;}
-  startCS('sell',{stack:rdy});
+  // Find nearest ready stack to Jack
+  const ready=dryingStacks.filter(s=>s.done);
+  if(!ready.length){addMsg(MX,MY-50,'No dry wood!','#ff6666');return;}
+  ready.sort((a,b)=>Math.abs(J.x-a.x)-Math.abs(J.x-b.x));
+  startCS('sell',{stack:ready[0]});
 }
 
 function upgradeAxe(){
@@ -772,9 +863,27 @@ function buyShed(){
   if(isBusy())return;
   if(axeLv<AXES.length-1){addMsg(50,440,'Need Golden Axe!','#ff6666');return;}
   const next=getNextShed();
-  if(!next){addMsg(50,440,'All sheds built!','#c8a96e');return;}
-  if(coins<next.cost){addMsg(50,440,'Need '+next.cost+'c','#ff6666');return;}
-  startCS('shed',{shed:next});
+  if(next){
+    if(coins<next.cost){addMsg(50,440,'Need '+next.cost+'c','#ff6666');return;}
+    startCS('shed',{shed:next});
+  } else {
+    // All sheds done, try kilns
+    const nextK=getNextKiln();
+    if(nextK){
+      if(coins<nextK.cost){addMsg(50,440,'Need '+nextK.cost+'c','#ff6666');return;}
+      coins-=nextK.cost;kilnsBought[nextK.speciesId]=true;
+      // Recalculate drying times and positions for that species
+      const si=SPECIES.findIndex(s=>s.id===nextK.speciesId);
+      const speciesStacks=dryingStacks.filter(st=>st.speciesId===nextK.speciesId);
+      speciesStacks.forEach((st,i)=>{
+        const sp=SPECIES.find(s=>s.id===st.speciesId);
+        st.dryTime=dryTimeFor(sp);
+        const p=getStackPos(si,i);st.x=p.x;st.y=p.y;st.slot=i;
+      });
+      addMsg(GW/2,280,nextK.name+' BUILT!','#ff6633');
+      updHud();
+    } else {addMsg(50,440,'All built!','#c8a96e');}
+  }
 }
 
 window.doChop=doChop;window.doStack=doStack;window.doSell=doSell;
@@ -794,27 +903,49 @@ function hireOrUpgradeEmp(){
   coins-=next.cost;empPerkLv++;
   addMsg(GW/2,280,next.name+'!','#80e080');updHud();
 }
+function upgradeEmpAxe(){
+  if(isBusy())return;
+  if(!empHired){addMsg(GW/2,300,'Hire hand first!','#ff6666');return;}
+  const next=nextEmpAxe();
+  if(!next){addMsg(GW/2,300,'MAX AXE!','#ffd700');return;}
+  if(coins<next.cost){addMsg(GW/2,300,'Need '+next.cost+'c','#ff6666');return;}
+  coins-=next.cost;empAxeLv++;E.hasAxe=empAxeLv>0;
+  addMsg(GW/2,280,next.name+'!','#a0c8ff');updHud();
+}
 window.hireOrUpgradeEmp=hireOrUpgradeEmp;
+window.upgradeEmpAxe=upgradeEmpAxe;
 
 // ═══ EMPLOYEE SHOP ═══
 function drawEmpShop(){
   if(axeLv<AXES.length-1)return;
   const sx=50,sy=500;
   if(!empHired){
-    // Show hire option
     X.fillStyle='#2d5a27';X.fillRect(sx-14,sy-10,28,20);
     oText('HIRE',sx,sy+3,'#80e080',5);
     oText('HAND',sx,sy+14,'#80e080',5);
     oText(EMP_PERKS[0].cost+'c',sx,sy+24,'#ffd700',5);
     if(coins>=EMP_PERKS[0].cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS H',sx,sy-18,'#80e080',7);X.globalAlpha=1;}
   } else {
-    const next=nextEmpPerk();
-    if(!next)return;
-    X.fillStyle='#2d5a27';X.fillRect(sx-14,sy-10,28,20);
-    oText('PERK',sx,sy+3,'#80e080',5);
-    oText(next.name,sx,sy+14,'#80e080',5);
-    oText(next.cost+'c',sx,sy+24,'#ffd700',5);
-    if(coins>=next.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS H',sx,sy-18,'#80e080',7);X.globalAlpha=1;}
+    // Perk upgrade (H key)
+    const nextP=nextEmpPerk();
+    if(nextP){
+      X.fillStyle='#2d5a27';X.fillRect(sx-14,sy-10,28,20);
+      oText('PERK',sx,sy+3,'#80e080',5);
+      oText(nextP.name,sx,sy+14,'#80e080',5);
+      oText(nextP.cost+'c',sx,sy+24,'#ffd700',5);
+      if(coins>=nextP.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS H',sx,sy-18,'#80e080',7);X.globalAlpha=1;}
+    }
+    // Axe upgrade (G key) - shown to the right
+    const nextA=nextEmpAxe();
+    if(nextA){
+      const ax=sx+80,ay=sy;
+      X.fillStyle='#3a4a6a';X.fillRect(ax-14,ay-10,28,20);
+      oText('HAND',ax,ay-2,'#a0c8ff',5);
+      oText('AXE',ax,ay+8,'#a0c8ff',5);
+      oText(nextA.name,ax,ay+20,'#a0c8ff',5);
+      oText(nextA.cost+'c',ax,ay+30,'#ffd700',5);
+      if(coins>=nextA.cost&&!cutscene){const a=0.5+Math.sin(Date.now()*0.004)*0.4;X.globalAlpha=a;oText('PRESS G',ax,ay-18,'#a0c8ff',7);X.globalAlpha=1;}
+    }
   }
 }
 
@@ -823,12 +954,14 @@ function updateEmployee(dt){
   if(!empHired)return;
   const es=empSpd();
 
+  // Handle chop animation
+  if(E.chop){E.cp+=0.025;if(E.cp>=1){E.chop=false;E.cp=0;}}
+
   if(E.state==='idle'){
     E.timer+=dt;
-    // Check priorities: 1) sell dry stack, 2) stack 30+ wood
+    // Priorities: 1) sell dry, 2) stack 30+, 3) chop if has axe
     const rdy=getReadyStack();
     if(rdy){E.state='selling';E.target=rdy;E.phase=0;E.timer=0;return;}
-    // Find stackable species
     for(let si=0;si<SPECIES.length;si++){
       const sp=SPECIES[si];
       if(freshWood[sp.id]>=STACK_SIZE){
@@ -836,8 +969,12 @@ function updateEmployee(dt){
         if(existing.length<maxStacksFor(sp.id)){E.state='stacking';E.target={speciesIdx:si};E.phase=0;E.timer=0;return;}
       }
     }
-    // Idle wander near center
-    if(E.timer>2){E.tx=300+Math.random()*360;E.timer=0;}
+    // 3) Chop a log if has axe and idle
+    if(empAxeLv>0&&E.timer>1){
+      const empLog=logs.find(l=>!l.done&&Math.abs(J.x-l.x)>60); // pick log player isn't near
+      if(empLog){E.state='chopping';E.target=empLog;E.phase=0;E.timer=0;return;}
+    }
+    if(E.timer>3){E.tx=300+Math.random()*360;E.timer=0;}
   }
   else if(E.state==='selling'){
     const st=E.target;
@@ -899,6 +1036,29 @@ function updateEmployee(dt){
     }
   }
 
+  else if(E.state==='chopping'){
+    const lg=E.target;
+    if(!lg||lg.done){E.state='idle';E.timer=0;return;}
+    if(E.phase===0){// Walk beside log
+      const side=E.x<lg.x?-1:1;
+      const chopX=lg.x+side*(lg.diam/2+18);
+      E.tx=chopX;E.f=-side;
+      if(Math.abs(E.x-chopX)<10){E.phase=1;E.timer=0;}
+    } else if(E.phase===1){// Chop
+      E.walk=false;E.timer+=dt;
+      if(lg.done){E.state='idle';E.chop=false;E.timer=0;return;}
+      if(E.timer>0.8&&!E.chop){
+        E.chop=true;E.cp=0;E.f=E.x<lg.x?1:-1;
+        setTimeout(()=>{
+          if(lg.done)return;
+          lg.prog++;spawnChopP(lg.x,lg.y);
+          if(lg.prog>=lg.max){lg.done=true;logsChopped++;triggerSplit(lg);updHud();setTimeout(()=>spawnLog(),1200);}
+        },350);
+        E.timer=0;
+      }
+    }
+  }
+
   // Move employee
   const edx=E.tx-E.x;
   if(Math.abs(edx)>3){E.walk=true;E.x+=Math.sign(edx)*es;E.f=edx>0?1:-1;E.wt++;}
@@ -920,13 +1080,23 @@ function drawEmployee(){
   // Suspenders
   X.fillStyle='#5a3a1e';X.fillRect(-7,-22,3,44);X.fillRect(4,-22,3,44);
   X.fillStyle='#d4a030';X.beginPath();X.arc(-5.5,-4,1.5,0,Math.PI*2);X.fill();X.beginPath();X.arc(5.5,-4,1.5,0,Math.PI*2);X.fill();
+  // Chop animation angle
+  let ea=0;
+  if(E.chop){const p=E.cp;if(p<0.4)ea=-Math.PI*0.8*(p/0.4);else if(p<0.6)ea=-Math.PI*0.8+Math.PI*1.2*((p-0.4)/0.2);else ea=Math.PI*0.4*(1-(p-0.6)/0.4);}
   // Arms
   const armSwing=E.walk?Math.sin(E.wt*0.3)*15*Math.PI/180:0;
-  X.fillStyle='#2d7a27';X.save();X.translate(-10,-20);X.rotate(armSwing);X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);X.restore();
+  // Back arm
+  X.fillStyle='#2d7a27';X.save();X.translate(-10,-20);
+  const eba=E.chop?ea*0.3:armSwing;
+  X.rotate(eba);X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);X.restore();
   // Carrying
   if(E.carry){X.save();X.translate(0,-30);for(let i=0;i<Math.min(E.cc,5);i++){X.fillStyle=i%2===0?'#8B6914':'#a0522d';X.fillRect(-8+i*3,-6-i*4,10,7);X.fillStyle='#d4b86a';X.beginPath();X.ellipse(-3+i*3,-3-i*4,4,3,0,0,Math.PI*2);X.fill();}X.restore();}
-  // Front arm
-  X.save();X.translate(8,-22);X.rotate(-armSwing);X.fillStyle='#2d7a27';X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);X.restore();
+  // Front arm + axe
+  X.save();X.translate(8,-22);
+  const efa=E.chop?ea*0.8:-armSwing;
+  X.rotate(efa);X.fillStyle='#2d7a27';X.fillRect(-3,0,6,16);X.fillStyle='#e8b88a';X.fillRect(-2,14,5,5);
+  if(E.hasAxe){X.fillStyle='#8B7355';X.fillRect(1,14,3,28);const eax=empAxeLv>=4?AXES[3]:empAxeLv>=3?AXES[2]:empAxeLv>=2?AXES[1]:AXES[0];X.fillStyle=eax.color;X.beginPath();X.moveTo(0,38);X.lineTo(-8,44);X.lineTo(-6,48);X.lineTo(4,44);X.closePath();X.fill();}
+  X.restore();
   // Head
   X.fillStyle='#e8b88a';X.fillRect(-8,-38,16,14);X.fillStyle='#2a2a2a';X.fillRect(-5,-34,3,3);X.fillRect(3,-34,3,3);
   X.fillStyle='#a06040';X.fillRect(-3,-27,6,2);
@@ -965,6 +1135,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyU')upgradeAxe();if(e.code==='KeyC')buyCoffee();
   if(e.code==='KeyJ')buyJerky();if(e.code==='KeyB')buyShed();
   if(e.code==='KeyH')hireOrUpgradeEmp();
+  if(e.code==='KeyG')upgradeEmpAxe();
 });
 
 // ═══ UPDATE DRYING ═══
